@@ -1,0 +1,21 @@
+name: ios-unsigned
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm i @capacitor/core @capacitor/ios @capacitor/haptics @capacitor/status-bar && npm i -D @capacitor/cli
+      - run: npm run build
+      - run: npx cap add ios && npx cap sync ios
+      - name: Build unsigned .app
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+          mkdir Payload && cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qr Blink-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: Blink-unsigned-ipa, path: Blink-unsigned.ipa }

@@ -1,0 +1,83 @@
+{
+  "name": "blink",
+  "productName": "Blink",
+  "version": "1.8.7",
+  "description": "Blink — музыкальный плеер для ПК",
+  "author": "ayori",
+  "private": true,
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite build && electron .",
+    "build": "vite build",
+    "start": "electron .",
+    "dist": "vite build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "app.blink.player",
+    "productName": "Blink",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp3",
+          "wav",
+          "flac",
+          "ogg",
+          "opus",
+          "m4a",
+          "aac"
+        ],
+        "name": "Blink Audio",
+        "description": "Аудиофайл",
+        "role": "Viewer",
+        "icon": "build/file-audio.ico"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Blink",
+      "installerLanguages": [
+        "ru_RU"
+      ],
+      "language": "1049",
+      "artifactName": "Blink-Setup.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "iluvurghz",
+      "repo": "blink",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "@fontsource/manrope": "^5.3.0",
+    "@fontsource/unbounded": "^5.3.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "@xhayper/discord-rpc": "^1.5.1",
+    "electron-updater": "^6.8.9",
+    "motion": "^12.43.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.5"
+  }
+}

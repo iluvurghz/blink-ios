@@ -1,0 +1,103 @@
+/* Performance layer (loaded last). Nothing here changes the layout; it removes what costs frames:
+   blur-behind that re-renders under every scroll, blurred full-screen layers, a colour variable
+   that animated across the whole page on each track change, and a full-screen blend grain. */
+
+/* The accent used to ease over 0.8-1.2 s through every element that reads it (a style
+   recalculation of the whole tree on each frame). It now switches at once. */
+:root { transition: none; }
+
+/* Ambient light: soft radial gradients instead of 90px-blurred circles. Same look, no blur pass. */
+.ambient .blob { filter: none; will-change: transform; }
+.ambient .a { background: radial-gradient(closest-side, var(--gA), transparent); }
+.ambient .b { background: radial-gradient(closest-side, var(--gB), transparent); }
+.ambient .c { background: radial-gradient(closest-side, var(--gC), transparent); }
+
+/* A full-screen overlay blend on top of everything repainted the whole window on any change. */
+.grain { display: none; }
+
+/* «Вспышка»: no animated or blurred background, only a still glow in the accent colour. */
+.pf-bg {
+  background:
+    radial-gradient(75% 46% at 50% 16%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%),
+    radial-gradient(70% 42% at 50% 104%, color-mix(in srgb, var(--gB) 38%, transparent), transparent 76%);
+}
+.pf-veil, .pf-aura ~ .pf-veil, .pf-waves ~ .pf-veil {
+  background: radial-gradient(120% 80% at 50% 40%, transparent 45%, rgba(8, 7, 10, 0.7));
+  mix-blend-mode: normal;
+}
+.pf-aura, .pf-waves, .pf-gl, .pf-bg > img, .flash-waves, .flash-gl, .fs-bg { display: none !important; }
+.flash::after { display: none; }
+
+/* Blur-behind is repainted under every scrolling list and progress bar: off, with the surfaces
+   made a little more solid so the text on them stays readable. */
+.nav, .capsule, .progress .tip, .cover-edit-ico, .flash-screen .fs-next, .fs-modes button,
+.pf-ctl .glass, .pf-modes, .pf-bar, .pf-ignite, .install-hint, .titlebar::before, .titlebar .nav::before {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+/* backdrop-filter also made these their own stacking context (children with z-index: -1 stay
+   inside them): keep that without the blur. */
+.nav, .capsule, .progress .tip, .cover-edit-ico, .flash-screen .fs-next, .fs-modes button,
+.pf-ctl .glass, .pf-modes, .pf-bar, .pf-ignite, .install-hint { isolation: isolate; }
+.nav { background: rgba(21, 19, 26, 0.92); }
+.capsule { background: color-mix(in srgb, var(--ink-2) 96%, transparent); }
+.titlebar::before { background: linear-gradient(180deg, rgba(13, 12, 16, 0.96) 0%, rgba(13, 12, 16, 0.7) 60%, transparent 100%); }
+@media (max-width: 760px) {
+  .titlebar::before { background: color-mix(in srgb, var(--ink) 96%, transparent); }
+  .titlebar .nav::before { background: color-mix(in srgb, var(--gA) 14%, rgba(18, 16, 22, 0.95)); }
+  .phone-flash .titlebar::before { background: transparent; }
+}
+
+/* Long lists: rows outside the screen are not laid out or painted. */
+.trow { content-visibility: auto; contain-intrinsic-size: auto 60px; }
+
+/* A minimised or hidden window keeps no animation running (the app plays on in the background). */
+html[data-bg='1'] *, html[data-bg='1'] *::before, html[data-bg='1'] *::after { animation-play-state: paused !important; }
+
+/* Honour the system «reduce motion» setting. */
+@media (prefers-reduced-motion: reduce) {
+  .ambient .blob { animation: none; }
+}
+
+/* The start-up veil fades out by CSS on its own clock: if the page is busy right after loading
+   (the old «screen goes dark for 10+ s» on phones), it still goes away on time. */
+.intro { animation: introOut 0.4s ease 1.35s forwards; }
+@keyframes introOut { to { opacity: 0; visibility: hidden; } }
+
+/* Readable secondary text on the dark background. */
+:root { --mute: #b3aeba; --faint: #9a94a6; }
+
+/* Zoom by pinch is allowed; 16px fields keep iOS from zooming in on focus by itself. */
+@media (max-width: 760px) {
+  input, textarea, select { font-size: 16px; }
+}
+
+/* ---------- resizing the computer window ----------
+   Below ~1100px the full-screen player's footer used to squeeze the title and the artist into a
+   narrow column and wrap «Не то»; now the title takes a full row and the controls sit under it. */
+.fs-skip, .stage-foot .fs-skip { white-space: nowrap; flex: none; }
+@media (min-width: 761px) and (max-width: 1100px) {
+  .stage-foot { grid-template-columns: minmax(0, 1fr) auto; row-gap: 14px; padding-left: 5vw; padding-right: 5vw; }
+  .stage-foot > :nth-child(2) { grid-column: 1 / -1; }
+  .stage-foot .ctl { grid-column: 1; justify-content: flex-start; }
+  .stage-foot .right { grid-column: 2; }
+  .stage-foot .title { font-size: clamp(22px, 3.2vw, 32px); }
+  .stage-cover { width: min(100%, 38vh); }
+  .stage-cover.big { width: min(100%, 44vh); }
+}
+
+/* Looping track video over the cover (ui/Shot.jsx) */
+.stage-cover, .pf-cover { position: relative; }
+.shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.7s ease; pointer-events: none; border-radius: inherit; z-index: 1; }
+.shot.on { opacity: 1; }
+
+/* iPhone lag on leaving the full-screen player and on sheets: a full-screen blur-behind that has
+   to be re-rendered while the screen animates away. Solid surfaces instead. */
+.stage { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: rgba(13, 12, 16, 0.96); }
+@media (max-width: 760px) {
+  .scrim, .confirm, .menu, .sheet { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .scrim { background: rgba(8, 7, 10, 0.78); }
+  .confirm, .menu { background: var(--ink-2); }
+  /* shared-cover spring on leaving the stage is a layout animation on the main thread: keep it short */
+  .stage, .stage * { will-change: auto; }
+}

@@ -1,0 +1,7 @@
+{
+  "appId": "app.blink.player",
+  "appName": "Blink",
+  "webDir": "dist",
+  "server": { "url": "https://blinkmusic.cc", "cleartext": false },
+  "ios": { "contentInset": "never", "backgroundColor": "#0d0c10" }
+}
