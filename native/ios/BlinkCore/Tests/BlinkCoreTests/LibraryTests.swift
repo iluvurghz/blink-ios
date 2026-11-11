@@ -1,11 +1,6 @@
 import XCTest
 @testable import BlinkCore
 
-private struct FixedToken: TokenProvider {
-    let value: String?
-    func accessToken() async -> String? { return value }
-}
-
 final class LibraryTests: XCTestCase {
     private let base = "http://api.test"
     private var http: RouteHTTP!
