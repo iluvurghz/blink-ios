@@ -4,3 +4,4 @@ DerivedData/
 *.xcodeproj
 *.xcworkspace
 Package.resolved
+App/Info.plist

@@ -16,8 +16,9 @@ on:
         type: boolean
         default: false
 
+# Пуш не должен отменять уже идущую сборку на macOS, поэтому группа зависит ещё и от типа запуска.
 concurrency:
-  group: native-ios-${{ github.ref }}
+  group: native-ios-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -40,3 +41,89 @@ jobs:
         run: swift build 2>&1
       - name: Тесты
         run: swift test 2>&1
+      # SwiftUI на Linux не собрать, но опечатки и сломанные скобки видно сразу, до дорогой сборки на macOS.
+      - name: Синтаксис экранов
+        working-directory: native/ios
+        run: |
+          files="$(find App/Sources -name '*.swift' | sort)"
+          echo "$files"
+          swiftc -swift-version 5 -parse $files
+
+  ipa:
+    name: Сборка .ipa (macOS)
+    if: github.event_name == 'workflow_dispatch' && inputs.ipa
+    needs: core-tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версии
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: XcodeGen
+        run: brew install xcodegen
+      - name: Ключ входа (публичный)
+        env:
+          FROM_SECRET: ${{ secrets.BLINK_SUPABASE_ANON_KEY }}
+        run: |
+          key="$FROM_SECRET"
+          if [ -z "$key" ]; then key="$(python3 native/tools/find_anon_key.py || true)"; fi
+          if [ -n "$key" ]; then
+            echo "::add-mask::$key"
+            echo "BLINK_SUPABASE_ANON_KEY=$key" >> "$GITHUB_ENV"
+            echo "Ключ входа найден: приложение соберётся со входом."
+          else
+            echo "::warning::Ключ входа не найден: приложение соберётся без входа. Добавьте секрет BLINK_SUPABASE_ANON_KEY."
+          fi
+      - name: Проект Xcode
+        working-directory: native/ios
+        run: xcodegen generate
+      - name: Сборка без подписи
+        working-directory: native/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Blink.xcodeproj -scheme Blink -configuration Release \
+            -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            BLINK_SUPABASE_ANON_KEY="${BLINK_SUPABASE_ANON_KEY:-}" \
+            build 2>&1 | tee build.log
+      - name: Ошибки сборки
+        if: failure()
+        working-directory: native/ios
+        run: |
+          echo "---- error: ----"
+          grep -E "error:" build.log | sort -u | head -80 || true
+          echo "---- warning: (первые 40) ----"
+          grep -E "warning:" build.log | sort -u | head -40 || true
+      - name: Упаковка .ipa
+        id: pack
+        working-directory: native/ios
+        run: |
+          app="build/Build/Products/Release-iphoneos/Blink.app"
+          test -d "$app"
+          rm -rf Payload && mkdir Payload && cp -R "$app" Payload/
+          out="Blink-ios-alpha-${GITHUB_RUN_NUMBER}.ipa"
+          zip -qry "$out" Payload
+          ls -la "$out"
+          echo "path=native/ios/$out" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blink-ios-alpha
+          path: ${{ steps.pack.outputs.path }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcodebuild-log
+          path: native/ios/build.log
+          if-no-files-found: ignore
+      - name: Свежая сборка на странице релизов
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-alpha --cleanup-tag --yes || true
+          gh release create ios-alpha "${{ steps.pack.outputs.path }}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для iPhone, сборка ${GITHUB_RUN_NUMBER}" \
+            --notes "Тестовая сборка (alpha), без подписи: ставится через ваш сертификат (Sideloadly, AltStore, TrollStore). Ветка: ${GITHUB_REF_NAME}, коммит ${GITHUB_SHA::7}."
