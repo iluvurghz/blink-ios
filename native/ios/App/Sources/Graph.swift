@@ -131,7 +131,7 @@ final class Graph: ObservableObject {
         // Вспышка и лайки: состояние на устройстве, лайки и история синхронизируются с аккаунтом.
         let library = LibraryStore(FileBlob(name: "library.json"))
         let settings = WaveSettingsBox()
-        let engine = WaveEngine(
+        let waveEngine = WaveEngine(
             source: WaveApi(http: http, config: config),
             store: WaveStore(FileBlob(name: "wave.json")),
             library: library,
@@ -140,7 +140,7 @@ final class Graph: ObservableObject {
         self.library = library
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })
         self.flash = FlashController(
-            engine: engine,
+            engine: waveEngine,
             library: library,
             player: player,
             actions: actions,
