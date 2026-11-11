@@ -82,7 +82,13 @@ final class Graph: ObservableObject {
 
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let storage = FileStorage(root: support.appendingPathComponent("offline", isDirectory: true))
+        var offlineRoot = support.appendingPathComponent("offline", isDirectory: true)
+        // Сохранённые треки можно скачать заново, поэтому в резервную копию iCloud они не идут (так просит Apple).
+        try? FileManager.default.createDirectory(at: offlineRoot, withIntermediateDirectories: true)
+        var noBackup = URLResourceValues()
+        noBackup.isExcludedFromBackup = true
+        try? offlineRoot.setResourceValues(noBackup)
+        let storage = FileStorage(root: offlineRoot)
         let resolver = ServerResolver(http: http, config: config, tokens: auth)
         let downloader = Downloader(storage: storage, resolver: resolver, transport: transport, network: network)
         let offline = OfflineManager(storage: storage, downloader: downloader, network: network)
