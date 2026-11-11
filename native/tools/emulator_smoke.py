@@ -3,7 +3,8 @@
 
 Что делает: ставит APK, открывает его, ждёт первый экран, листает вкладки, вводит запрос в поиск,
 снимает экран на каждом шаге и ловит падения. Снимки и отчёт кладёт в папку shots/ (SHOTS_DIR).
-Падение приложения или не открывшийся первый экран делают прогон красным; остальное пишется в отчёт.
+Падение приложения, его «не отвечает» или не открывшийся первый экран делают прогон красным; остальное пишется в отчёт.
+Системные окна «не отвечает» (лаунчер на медленном холодном старте эмулятора) закрываются кнопкой «Wait».
 """
 
 import glob
@@ -64,16 +65,44 @@ class Node:
         return self.box[3] - self.box[1]
 
 
+ANR_MARKERS = ("isn't responding", "не отвечает")
+WAIT_LABELS = ("wait", "подождать")
+
+
+def handle_anr(nodes):
+    """Окно «… не отвечает». Системное (лаунчер Quickstep на медленном холодном старте эмулятора) закрываем
+    кнопкой «Wait» и идём дальше. Если не отвечает само приложение, это настоящая находка: прогон станет красным."""
+    title = next((n.text for n in nodes if any(m in n.text.lower() for m in ANR_MARKERS)), None)
+    if title is None:
+        return False
+    if "blink" in title.lower():
+        msg = f"приложение не отвечает (ANR): {title}"
+        if msg not in problems:
+            problems.append(msg)
+        log("! " + msg)
+    button = next((n for n in nodes if n.clickable and n.text.strip().lower() in WAIT_LABELS), None)
+    if button is None:
+        return False
+    log(f"окно «{title}»: жму «{button.text}»")
+    tap(*button.center)
+    return True
+
+
 def dump():
-    for _ in range(3):
+    for _ in range(4):
         adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", check=False, timeout=60)
         xml = adb("shell", "cat", "/sdcard/ui.xml", check=False)
         i = xml.find("<")
         if i >= 0:
             try:
-                return [Node(e) for e in ET.fromstring(xml[i:]).iter("node")]
+                nodes = [Node(e) for e in ET.fromstring(xml[i:]).iter("node")]
             except ET.ParseError:
-                pass
+                nodes = None
+            if nodes is not None:
+                if handle_anr(nodes):
+                    time.sleep(2)  # окно закрылось, смотрим экран ещё раз
+                    continue
+                return nodes
         time.sleep(1)
     return []
 
