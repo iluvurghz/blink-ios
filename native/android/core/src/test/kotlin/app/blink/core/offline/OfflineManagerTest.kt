@@ -263,10 +263,13 @@ class OfflineManagerTest {
         assertTrue(kept > 0, "накопленное осталось")
 
         backend.throttleBytes = 0
+        val before = backend.fileRequests.size
         network.set(true)
         m.until { it.saved.size == 1 }
         assertContentEquals(f.bytes, File(m.audioPath(key("a"))!!).readBytes())
-        assertEquals("bytes=$kept-", backend.fileRequests.last().getHeader("Range"))
+        // Первый запрос после возвращения сети идёт с места обрыва (последний мог быть вторым куском: сервер режет Range до 2 МиБ).
+        assertTrue(backend.fileRequests.size > before)
+        assertEquals("bytes=$kept-", backend.fileRequests[before].getHeader("Range"))
     }
 
     @Test

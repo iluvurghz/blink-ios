@@ -301,10 +301,14 @@ final class OfflineManagerTests: XCTestCase {
         XCTAssertGreaterThan(kept, 0, "накопленное осталось")
 
         backend.throttleChunk = 0
+        let before = backend.fileRequests.count
         network.set(true)
         await until(m, "сохранён") { $0.saved.count == 1 }
         XCTAssertEqual(bytesOf(m.audioPath(key("a"))), f.bytes)
-        XCTAssertEqual(backend.fileRequests.last?.header("Range"), "bytes=\(kept)-")
+        // Первый запрос после возвращения сети идёт с места обрыва. (Последний мог быть вторым куском:
+        // сервер режет открытый Range до 2 МиБ.)
+        XCTAssertGreaterThan(backend.fileRequests.count, before)
+        XCTAssertEqual(backend.fileRequests[before].header("Range"), "bytes=\(kept)-")
     }
 
     func testPauseStopsEverythingResumeFinishes() async throws {
