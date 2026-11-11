@@ -1,0 +1,42 @@
+name: native-ios
+
+# Нативное приложение Blink для iOS. Ядро (BlinkCore) собирается и проверяется на Linux: это дёшево.
+# Сборка на macOS в десять раз дороже по минутам, поэтому .ipa собирается только по кнопке (workflow_dispatch).
+on:
+  push:
+    branches: ["native/**", main]
+    paths:
+      - "native/ios/**"
+      - "native/design/**"
+      - ".github/workflows/native-ios.yml"
+  workflow_dispatch:
+    inputs:
+      ipa:
+        description: "Собрать неподписанный .ipa на macOS (минуты macOS дорогие)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: native-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  core-tests:
+    name: Тесты ядра (Swift на Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: swift:6.0
+    defaults:
+      run:
+        working-directory: native/ios/BlinkCore
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версия Swift
+        run: swift --version
+      - name: Сборка
+        run: swift build 2>&1
+      - name: Тесты
+        run: swift test 2>&1
