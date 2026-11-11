@@ -2,6 +2,7 @@ package app.blink.player
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -24,6 +25,19 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         setContent { BlinkRoot(graph, onDownloadsStarted = ::askNotificationsOnce) }
+        handleLink(intent)
+    }
+
+    // Сайт вернул пользователя по blink://auth: activity уже открыта (singleTask), ссылка приходит сюда.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLink(intent)
+    }
+
+    private fun handleLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "blink") graph.finishSignIn(data.toString())
     }
 
     // Пульт к плееру живёт, пока приложение на экране; сама музыка играет в сервисе и без него.

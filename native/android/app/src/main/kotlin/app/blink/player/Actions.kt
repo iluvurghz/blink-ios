@@ -132,6 +132,17 @@ class Actions(private val g: Graph) {
         }
     }
 
+    /** Вход через сайт: Google или Telegram в браузере, потом возврат по blink://auth. */
+    fun startProviderSignIn(provider: app.blink.core.net.AuthLink.Provider) {
+        val url = app.blink.core.net.AuthLink.startUrl(g.config.base, provider)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            g.app.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            g.toasts.show("Не нашёл браузер для входа")
+        }
+    }
+
     /** Оформление подписки пока на сайте: в M1 появится встроенный экран. */
     fun openPlus() {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(g.config.base)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

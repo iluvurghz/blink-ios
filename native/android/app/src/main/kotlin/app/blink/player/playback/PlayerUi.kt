@@ -12,4 +12,6 @@ data class PlayerUi(
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val connected: Boolean = false,
+    /** Сколько треков осталось в очереди после текущего. */
+    val queueLeft: Int = 0,
 )

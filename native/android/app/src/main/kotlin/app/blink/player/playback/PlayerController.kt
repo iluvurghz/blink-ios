@@ -105,6 +105,13 @@ class PlayerController(private val context: Context, private val scope: Coroutin
         }
     }
 
+    /** Дописать треки в конец очереди (Вспышка подкладывает новые, пока играет текущий). */
+    fun append(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val items = tracks.map { MediaItems.of(it) }
+        command { c -> c.addMediaItems(items) }
+    }
+
     fun toggle() {
         command { c ->
             if (c.playbackState == Player.STATE_ENDED) c.seekToDefaultPosition()
@@ -157,6 +164,7 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             hasNext = p.hasNextMediaItem(),
             hasPrevious = p.hasPreviousMediaItem(),
             connected = true,
+            queueLeft = (p.mediaItemCount - p.currentMediaItemIndex - 1).coerceAtLeast(0),
         )
     }
 

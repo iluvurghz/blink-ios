@@ -61,7 +61,7 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     T("СЕЙЧАС ИГРАЕТ", style = Type.label, color = Ink.mute, maxLines = 1)
                 }
-                Spacer(Modifier.width(44.dp))
+                LikeButton(g, track)
             }
             Spacer(Modifier.weight(1f))
             Cover(track.artwork, Modifier.size(side), radius = 28.dp, noteDp = 72.dp)

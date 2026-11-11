@@ -4,11 +4,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class Tab { Search, Downloads, Account }
+enum class Tab { Flash, Search, Downloads, Account }
 
 /** Куда смотрит приложение. Живёт в Graph, чтобы тосты и сервисы могли переключать экраны. */
 class Nav {
-    private val tabFlow = MutableStateFlow(Tab.Search)
+    private val tabFlow = MutableStateFlow(Tab.Flash)
     val tab: StateFlow<Tab> = tabFlow.asStateFlow()
 
     private val playerFlow = MutableStateFlow(false)

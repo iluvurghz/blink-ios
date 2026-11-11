@@ -62,6 +62,7 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
 
     Box(Modifier.fillMaxSize().background(Ink.ink)) {
         when (tab) {
+            Tab.Flash -> FlashScreen(g)
             Tab.Search -> SearchScreen(g, searchList, initialQuery)
             Tab.Downloads -> DownloadsScreen(g, downloadsList)
             Tab.Account -> AccountScreen(g)
@@ -101,6 +102,7 @@ private fun BottomBar(tab: Tab, downloading: Boolean, onTab: (Tab) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        TabItem(Glyphs.Bolt, "Вспышка", tab == Tab.Flash, false, Modifier.weight(1f)) { onTab(Tab.Flash) }
         TabItem(Glyphs.Search, "Поиск", tab == Tab.Search, false, Modifier.weight(1f)) { onTab(Tab.Search) }
         TabItem(Glyphs.Download, "Скачанное", tab == Tab.Downloads, downloading, Modifier.weight(1f)) { onTab(Tab.Downloads) }
         TabItem(Glyphs.Person, "Профиль", tab == Tab.Account, false, Modifier.weight(1f)) { onTab(Tab.Account) }

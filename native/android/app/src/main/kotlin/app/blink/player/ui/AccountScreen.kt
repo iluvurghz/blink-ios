@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.blink.core.net.AuthException
+import app.blink.core.net.AuthLink
 import app.blink.core.ui.Format
 import app.blink.player.BuildConfig
 import app.blink.player.Graph
@@ -37,7 +38,7 @@ import app.blink.player.Tab
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Профиль: вход, статус Blink+, место на телефоне. Вход по почте и паролю; Google и Telegram придут позже. */
+/** Профиль: вход, статус Blink+, место на телефоне. Вход по почте и паролю, через Google или Telegram. */
 @Composable
 fun AccountScreen(g: Graph) {
     val session by g.auth.session.collectAsStateWithLifecycle()
@@ -196,5 +197,12 @@ private fun SignIn(g: Graph) {
         }
         Spacer(Modifier.height(16.dp))
         PillButton(if (busy) "Входим…" else "Войти", { submit() }, enabled = !busy)
+        Spacer(Modifier.height(18.dp))
+        T("или через сайт", style = Type.small, color = Ink.faint)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Google", { g.actions.startProviderSignIn(AuthLink.Provider.GOOGLE) }, primary = false)
+            PillButton("Telegram", { g.actions.startProviderSignIn(AuthLink.Provider.TELEGRAM) }, primary = false)
+        }
     }
 }
