@@ -101,3 +101,51 @@ jobs:
             --prerelease --target "$GITHUB_SHA" \
             --title "Blink для Android, сборка ${GITHUB_RUN_NUMBER}" \
             --notes "Тестовая сборка (alpha). Ставится поверх предыдущей, сохранённые треки не пропадают. Ветка: ${GITHUB_REF_NAME}, коммит ${GITHUB_SHA::7}."
+
+  emulator:
+    name: Запуск в эмуляторе
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Blink-android-alpha
+          path: apk
+      - name: KVM для эмулятора
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Эмулятор, APK, вкладки и поиск
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 native/tools/emulator_smoke.py
+      - name: Снимки экрана (ветка ci-screens)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -d shots ] || exit 0
+          tmp="$(mktemp -d)"
+          cp -r shots/. "$tmp"/
+          cd "$tmp"
+          git init -q -b ci-screens
+          git config user.name "blink-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add -A
+          git commit -qm "Снимки экрана: сборка ${GITHUB_RUN_NUMBER}, коммит ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screens
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-shots
+          path: shots
+          if-no-files-found: ignore
