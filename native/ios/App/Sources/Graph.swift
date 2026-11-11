@@ -187,7 +187,7 @@ final class Graph: ObservableObject {
             if online && current.newest.isEmpty && current.chart.isEmpty { search.refreshHome() }
         })
         search.refreshHome()
-        LaunchHooks.run(search: search, actions: actions, nav: nav)
+        LaunchHooks.run(search: search, actions: actions, nav: nav, player: player)
     }
 
     private func sessionChanged(_ userId: String?) {

@@ -24,7 +24,7 @@ enum LaunchHooks {
     }
 
     /// Вызывается один раз после старта приложения.
-    static func run(search: SearchModel, actions: Actions, nav: Nav) {
+    static func run(search: SearchModel, actions: Actions, nav: Nav, player: PlayerController) {
         if let tab = startTab { nav.go(tab) }
         guard startPlayer else { return }
         // Ждём, пока на главной появятся треки, включаем первый и открываем большой плеер.
@@ -34,6 +34,12 @@ enum LaunchHooks {
                 if let first = state.newest.first ?? state.chart.first {
                     actions.play([first], at: 0)
                     nav.openPlayer(true)
+                    // Состояние плеера в журнал каждые три секунды: по нему видно, пошёл ли звук (см. Diag).
+                    for step in 1...6 {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        let ui = player.current
+                        Diag.note("player +" + String(step * 3) + "s playing=" + String(ui.playing) + " buffering=" + String(ui.buffering) + " position=" + String(ui.positionMs) + "ms")
+                    }
                     return
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000)

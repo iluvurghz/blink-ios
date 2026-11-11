@@ -71,6 +71,10 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
         teardown()
         failed = false
         wantPlaying = autoplay
+        switch source {
+        case .stream: Diag.note("load stream autoplay=" + String(autoplay))
+        case .file: Diag.note("load file autoplay=" + String(autoplay))
+        }
         guard let url = sourceURL(for: source) else {
             fail("Не получилось открыть трек")
             return
@@ -88,7 +92,9 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
         observations.append(item.observe(\.duration, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.emit() }
         })
-        observations.append(player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+        observations.append(player.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
+            let reason = observed.reasonForWaitingToPlay?.rawValue ?? "-"
+            Diag.note("timeControl=" + String(observed.timeControlStatus.rawValue) + " reason=" + reason)
             DispatchQueue.main.async { self?.emit() }
         })
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] _ in
@@ -97,7 +103,9 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
         endToken = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
             self?.finished()
         }
-        failToken = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+        failToken = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] note in
+            let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            Diag.note("failed to play to end: " + Diag.describe(error))
             self?.fail("Не получилось доиграть трек")
         }
         if autoplay { player.play() }
@@ -122,7 +130,11 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
 
     private func itemStatusChanged(_ changed: AVPlayerItem) {
         guard changed === item else { return }
+        Diag.note("item status=" + String(changed.status.rawValue) + " error=" + Diag.describe(changed.error))
         if changed.status == .failed {
+            if let event = changed.errorLog()?.events.last {
+                Diag.note("item errorLog code=" + String(event.errorStatusCode) + " domain=" + event.errorDomain + " comment=" + (event.errorComment ?? "-"))
+            }
             fail("Не получилось проиграть трек")
         } else {
             emit()
@@ -136,6 +148,7 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
 
     private func fail(_ message: String) {
         if failed { return }
+        Diag.note("fail: " + message)
         failed = true
         wantPlaying = false
         player?.pause()
@@ -168,6 +181,7 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
             try session.setActive(true)
         } catch {
             // Без сессии звук может не пойти, но пробуем: ошибку покажет сам плеер.
+            Diag.note("audio session error: " + Diag.describe(error))
         }
     }
 
@@ -225,6 +239,7 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
             let type = AVAudioSession.InterruptionType(rawValue: raw)
         else { return }
         let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+        Diag.note("interruption type=" + String(raw))
         DispatchQueue.main.async { [self] in
             switch type {
             case .began:
@@ -243,10 +258,9 @@ final class AVPlayerEngine: NSObject, PlaybackEngine, @unchecked Sendable {
 
     /// Выдернули наушники: как у всех плееров, ставим на паузу, а не орём на весь автобус.
     @objc private func routeChange(_ note: Notification) {
-        guard
-            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-            AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
-        else { return }
+        guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
+        Diag.note("route change reason=" + String(raw))
+        guard AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable else { return }
         DispatchQueue.main.async { [self] in
             wantPlaying = false
             player?.pause()

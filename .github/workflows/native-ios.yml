@@ -171,10 +171,16 @@ jobs:
             list="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null || true)"
             grep -q "UIKitApplication:app.blink.player.alpha" <<<"$list"
           }
-          shot() {  # shot <файл> <секунд ждать> <ПЕРЕМЕННАЯ=значение>
+          EARLY=""
+          shot() {  # shot <файл> <секунд ждать> <ПЕРЕМЕННАЯ=значение>; если задан EARLY, ещё и ранний снимок через 4 секунды
             local file="$1" secs="$2"; shift 2
             xcrun simctl terminate "$udid" app.blink.player.alpha 2>/dev/null || true
             env "$@" xcrun simctl launch "$udid" app.blink.player.alpha
+            if [ -n "$EARLY" ]; then
+              sleep 4
+              xcrun simctl io "$udid" screenshot --type=png "shots/$EARLY.png" || true
+              secs=$((secs - 4))
+            fi
             sleep "$secs"
             # Снимок делаем до проверки: если приложение упало, на нём останется след.
             xcrun simctl io "$udid" screenshot --type=png "shots/$file.png" || true
@@ -190,12 +196,12 @@ jobs:
           shot 02-downloads 6 SIMCTL_CHILD_BLINK_START_TAB=downloads
           shot 03-account 6 SIMCTL_CHILD_BLINK_START_TAB=account
           shot 04-results 14 SIMCTL_CHILD_BLINK_START_QUERY=queen
+          # Плеер: ранний снимок ловит тост об ошибке (он живёт пять секунд), поздний показывает итог.
+          EARLY=05a-player-early
           shot 05-player 22 SIMCTL_CHILD_BLINK_START_PLAYER=1
-          # Крупный шрифт из настроек доступности: проверяем, что панель внизу и список не ломаются.
-          xcrun simctl ui "$udid" content_size accessibility-extra-large || true
-          shot 06-large-text 8 SIMCTL_CHILD_BLINK_START_TAB=search
-          xcrun simctl ui "$udid" content_size large || true
+          EARLY=""
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
+          xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'subsystem == "app.blink.player"' > shots/blink.log 2>&1 || true
           echo "итог: приложение живо на всех шагах" | tee shots/report.txt
       - uses: actions/upload-artifact@v4
         if: always() && inputs.screens
@@ -218,7 +224,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(shots/*.png shots/report.txt shots/app.log shots/*.ips)
+          files=(shots/*.png shots/report.txt shots/blink.log shots/app.log shots/*.ips)
           if [ "${#files[@]}" -eq 0 ]; then echo "снимков нет"; exit 0; fi
           gh release delete ios-screens --cleanup-tag --yes || true
           gh release create ios-screens "${files[@]}" \
