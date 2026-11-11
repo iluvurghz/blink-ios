@@ -20,6 +20,8 @@ data class Track(
     val explicit: Boolean = false,
     val year: String = "",
     val genre: String = "",
+    /** Дата выхода (ISO), если сервер её отдаёт: нужна «Вспышке» для свежести. */
+    val released: String? = null,
     val source: String? = null,
     val lic: String? = null,
     val lrc: String? = null,
