@@ -71,7 +71,9 @@ public final class URLSessionTransport: NSObject, Transport, URLSessionDataDeleg
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = idleTimeout
         cfg.timeoutIntervalForResource = 6 * 3600
-        cfg.waitsForConnectivity = false
+        #if !canImport(FoundationNetworking)
+        cfg.waitsForConnectivity = false // нет сети: сразу ошибка, а не ожидание (на Linux свойство только для чтения)
+        #endif
         cfg.httpMaximumConnectionsPerHost = 4
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         if let ua = userAgent { cfg.httpAdditionalHeaders = ["User-Agent": ua] }

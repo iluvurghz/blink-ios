@@ -9,7 +9,9 @@ public final class URLSessionHTTP: HTTPClient, @unchecked Sendable {
 
     public init(userAgent: String? = nil) {
         let cfg = URLSessionConfiguration.ephemeral
-        cfg.waitsForConnectivity = false
+        #if !canImport(FoundationNetworking)
+        cfg.waitsForConnectivity = false // нет сети: сразу ошибка, а не ожидание (на Linux свойство только для чтения)
+        #endif
         cfg.httpMaximumConnectionsPerHost = 16
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         if let ua = userAgent { cfg.httpAdditionalHeaders = ["User-Agent": ua] }

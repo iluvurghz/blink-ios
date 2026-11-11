@@ -291,7 +291,8 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
             $0.hasPrevious = hasPrevious
         }
         let task = Task { [weak self] in
-            await self?.resolveAndLoad(track, gen: gen)
+            guard let self = self else { return }
+            await self.resolveAndLoad(track, gen: gen)
         }
         lock.lock()
         if generation == gen { loadTask = task }
