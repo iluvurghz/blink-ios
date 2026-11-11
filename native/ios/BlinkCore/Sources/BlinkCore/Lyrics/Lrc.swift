@@ -32,10 +32,8 @@ public enum Lrc {
         else { return [] }
 
         var out: [LrcLine] = []
-        // components(separatedBy:) режет по \n даже внутри \r\n (в отличие от split по Character).
-        for raw in text.components(separatedBy: "\n") {
-            var line = raw
-            while line.hasSuffix("\r") { line.removeLast() }
+        for raw in splitLines(text) {
+            let line = raw
             let ns = line as NSString
             let full = NSRange(location: 0, length: ns.length)
             let tags = tagRe.matches(in: line, range: full)
@@ -65,6 +63,27 @@ public enum Lrc {
         return out.enumerated()
             .sorted { a, b in a.element.timeMs != b.element.timeMs ? a.element.timeMs < b.element.timeMs : a.offset < b.offset }
             .map { $0.element }
+    }
+
+    /// Строки по \n со снятым хвостовым \r. Режем по скалярам Юникода: для Character «\r\n» это один символ,
+    /// и split/components(separatedBy:) на Linux его не режут.
+    static func splitLines(_ text: String) -> [String] {
+        var out: [String] = []
+        var current = String.UnicodeScalarView()
+        func finish() {
+            while current.last == "\r" { current.removeLast() }
+            out.append(String(current))
+            current = String.UnicodeScalarView()
+        }
+        for u in text.unicodeScalars {
+            if u == "\n" {
+                finish()
+            } else {
+                current.append(u)
+            }
+        }
+        finish()
+        return out
     }
 
     /// Индекс строки, которая звучит в этот момент, или -1 до первой.
