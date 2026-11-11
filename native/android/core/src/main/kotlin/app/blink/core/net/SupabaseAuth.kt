@@ -39,7 +39,8 @@ class AuthException(val kind: Kind, message: String) : Exception(message) {
 }
 
 /**
- * Вход в Supabase (GoTrue) по почте и паролю и обновление токена. Telegram и Google придут в M1.
+ * Вход в Supabase (GoTrue): почта и пароль, Google и Telegram (через страницы сайта и возврат по `blink://auth`),
+ * обновление токена. Если supabase.co не отвечает (в РФ его режут), запросы уходят на зеркало сайта `/sb`.
  * Токен нужен серверу Blink (Bearer): `/api/offline/resolve`, `/api/play/:id`, `/api/plus/me`.
  */
 class SupabaseAuth(
@@ -52,6 +53,9 @@ class SupabaseAuth(
     val session: StateFlow<AuthSession?> = flow.asStateFlow()
     private val refreshLock = Mutex()
     private val json = "application/json".toMediaType()
+
+    @Volatile
+    private var useMirror = false
 
     val configured: Boolean get() = config.supabaseAnonKey.isNotBlank()
 
@@ -75,6 +79,39 @@ class SupabaseAuth(
         if (res.code in 200..299) return adopt(res.text)
         throw failure(res)
     }
+
+    /** Google: id-токен со страницы сайта и сырой nonce (Supabase сам сверяет его хэш с тем, что внутри токена). */
+    suspend fun signInWithIdToken(provider: String, idToken: String, nonce: String): AuthSession {
+        if (!configured) throw AuthException(AuthException.Kind.NOT_CONFIGURED, "В этой сборке нет ключа входа")
+        val body = buildJsonObject {
+            put("provider", JsonPrimitive(provider))
+            put("id_token", JsonPrimitive(idToken))
+            put("nonce", JsonPrimitive(nonce))
+        }
+        val res = call("id_token", body)
+        if (res.code in 200..299) return adopt(res.text)
+        throw providerFailure(res, "Google")
+    }
+
+    /** Telegram: одноразовый token_hash, который сервер выдал после проверки подписи виджета. */
+    suspend fun signInWithTokenHash(tokenHash: String): AuthSession {
+        if (!configured) throw AuthException(AuthException.Kind.NOT_CONFIGURED, "В этой сборке нет ключа входа")
+        val body = buildJsonObject {
+            put("type", JsonPrimitive("magiclink"))
+            put("token_hash", JsonPrimitive(tokenHash))
+        }
+        val res = send("auth/v1/verify", emptyList(), body, null, 20)
+        if (res.code in 200..299) return adopt(res.text)
+        throw providerFailure(res, "Telegram")
+    }
+
+    /** Заканчивает вход по ссылке, с которой сайт вернул пользователя в приложение. */
+    suspend fun finish(link: AuthLink): AuthSession =
+        when (link) {
+            is AuthLink.IdToken -> signInWithIdToken("google", link.token, link.nonce)
+            is AuthLink.TelegramHash -> signInWithTokenHash(link.hash)
+            is AuthLink.Failed -> throw AuthException(AuthException.Kind.SERVER, "Вход отменён или не получился")
+        }
 
     override suspend fun accessToken(): String? {
         val s = flow.value ?: return null
@@ -108,13 +145,7 @@ class SupabaseAuth(
         signOutLocal()
         if (s != null && configured) {
             try {
-                val url = config.supabase.toHttpUrl().newBuilder().addPathSegments("auth/v1/logout").build()
-                val req = Request.Builder().url(url)
-                    .header("apikey", config.supabaseAnonKey)
-                    .header("Authorization", "Bearer ${s.accessToken}")
-                    .post("{}".toRequestBody(json))
-                    .build()
-                http.withCallTimeout(8).newCall(req).text()
+                send("auth/v1/logout", emptyList(), buildJsonObject { }, s.accessToken, 8)
             } catch (_: Exception) {
             }
         }
@@ -125,21 +156,30 @@ class SupabaseAuth(
         store.save(null)
     }
 
-    private suspend fun call(grant: String, body: JsonObject): HttpText {
-        val url = config.supabase.toHttpUrl().newBuilder()
-            .addPathSegments("auth/v1/token")
-            .addQueryParameter("grant_type", grant)
-            .build()
-        val req = Request.Builder().url(url)
-            .header("apikey", config.supabaseAnonKey)
-            .header("Accept", "application/json")
-            .post(BlinkJson.encodeToString(JsonObject.serializer(), body).toRequestBody(json))
-            .build()
-        return try {
-            http.withCallTimeout(20).newCall(req).text()
-        } catch (e: IOException) {
-            throw AuthException(AuthException.Kind.NETWORK, "Нет связи с сервером входа")
+    private suspend fun call(grant: String, body: JsonObject): HttpText = send("auth/v1/token", listOf("grant_type" to grant), body, null, 20)
+
+    /** Прямой Supabase, а если он молчит, зеркало сайта; удачный выбор запоминаем до перезапуска. */
+    private suspend fun send(path: String, query: List<Pair<String, String>>, body: JsonObject, bearer: String?, seconds: Long): HttpText {
+        val text = BlinkJson.encodeToString(JsonObject.serializer(), body)
+        val roots = if (config.supabaseMirror == config.supabase) listOf(config.supabase) else if (useMirror) listOf(config.supabaseMirror, config.supabase) else listOf(config.supabase, config.supabaseMirror)
+        for ((i, root) in roots.withIndex()) {
+            val url = root.toHttpUrl().newBuilder().addPathSegments(path).apply { query.forEach { addQueryParameter(it.first, it.second) } }.build()
+            val req = Request.Builder().url(url)
+                .header("apikey", config.supabaseAnonKey)
+                .header("Accept", "application/json")
+                .apply { if (bearer != null) header("Authorization", "Bearer $bearer") }
+                .post(text.toRequestBody(json))
+                .build()
+            val first = i == 0 && roots.size > 1
+            try {
+                val res = http.withCallTimeout(if (first) FIRST_TRY_SECONDS else seconds).newCall(req).text()
+                if (roots.size > 1) useMirror = root == config.supabaseMirror
+                return res
+            } catch (_: IOException) {
+                // пробуем следующий адрес
+            }
         }
+        throw AuthException(AuthException.Kind.NETWORK, "Нет связи с сервером входа")
     }
 
     private fun adopt(text: String): AuthSession {
@@ -175,7 +215,12 @@ class SupabaseAuth(
         }
     }
 
+    private fun providerFailure(res: HttpText, who: String): AuthException =
+        if (res.code == 429) AuthException(AuthException.Kind.SERVER, "Слишком много попыток, подождите минуту")
+        else AuthException(AuthException.Kind.SERVER, "Вход через $who не получился (${res.code}), попробуйте ещё раз")
+
     private companion object {
         const val REFRESH_SKEW_MS = 60_000L
+        const val FIRST_TRY_SECONDS = 6L
     }
 }

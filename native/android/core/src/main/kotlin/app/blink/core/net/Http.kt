@@ -26,6 +26,9 @@ data class BlinkConfig(
     val base: String get() = baseUrl.trimEnd('/')
     val supabase: String get() = supabaseUrl.trimEnd('/')
 
+    /** Зеркало Supabase на сайте (nginx в РФ): supabase.co режут операторы. */
+    val supabaseMirror: String get() = "$base/sb"
+
     /** Относительные ссылки сервера и утёкшие 127.0.0.1 приводим к адресу сайта (как `toAbsolute` в вебе). */
     fun absolute(url: String?): String? {
         if (url.isNullOrEmpty()) return null

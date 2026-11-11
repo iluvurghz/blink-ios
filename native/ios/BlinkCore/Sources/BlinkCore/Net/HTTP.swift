@@ -63,6 +63,8 @@ public struct BlinkConfig: Sendable {
 
     public var base: String { return BlinkConfig.trimSlash(baseURL) }
     public var supabase: String { return BlinkConfig.trimSlash(supabaseURL) }
+    /// Зеркало Supabase на сайте (nginx в РФ): supabase.co режут операторы.
+    public var supabaseMirror: String { return base + "/sb" }
     public var hasKey: Bool { return !supabaseAnonKey.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private static func trimSlash(_ s: String) -> String {
