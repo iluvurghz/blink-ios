@@ -169,20 +169,21 @@ jobs:
           alive() {
             local list
             list="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null || true)"
-            grep -q "UIKitApplication:app.blink.player" <<<"$list"
+            grep -q "UIKitApplication:app.blink.player.alpha" <<<"$list"
           }
           shot() {  # shot <файл> <секунд ждать> <ПЕРЕМЕННАЯ=значение>
             local file="$1" secs="$2"; shift 2
-            xcrun simctl terminate "$udid" app.blink.player 2>/dev/null || true
-            env "$@" xcrun simctl launch "$udid" app.blink.player
+            xcrun simctl terminate "$udid" app.blink.player.alpha 2>/dev/null || true
+            env "$@" xcrun simctl launch "$udid" app.blink.player.alpha
             sleep "$secs"
+            # Снимок делаем до проверки: если приложение упало, на нём останется след.
+            xcrun simctl io "$udid" screenshot --type=png "shots/$file.png" || true
             if ! alive; then
               echo "::error::Приложение не живо после запуска ($file)"
-              ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i blink | head -5 || true
+              cp ~/Library/Logs/DiagnosticReports/Blink*.ips shots/ 2>/dev/null || true
               for f in $(ls -t ~/Library/Logs/DiagnosticReports/Blink*.ips 2>/dev/null | head -1); do head -c 6000 "$f"; done
               exit 1
             fi
-            xcrun simctl io "$udid" screenshot --type=png "shots/$file.png"
             echo "снимок $file: ok"
           }
           shot 01-search 14 SIMCTL_CHILD_BLINK_START_TAB=search
@@ -190,6 +191,10 @@ jobs:
           shot 03-account 6 SIMCTL_CHILD_BLINK_START_TAB=account
           shot 04-results 14 SIMCTL_CHILD_BLINK_START_QUERY=queen
           shot 05-player 22 SIMCTL_CHILD_BLINK_START_PLAYER=1
+          # Крупный шрифт из настроек доступности: проверяем, что панель внизу и список не ломаются.
+          xcrun simctl ui "$udid" content_size accessibility-extra-large || true
+          shot 06-large-text 8 SIMCTL_CHILD_BLINK_START_TAB=search
+          xcrun simctl ui "$udid" content_size large || true
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
           echo "итог: приложение живо на всех шагах" | tee shots/report.txt
       - uses: actions/upload-artifact@v4
@@ -204,3 +209,19 @@ jobs:
           name: xcodebuild-sim-log
           path: native/ios/build-sim.log
           if-no-files-found: ignore
+      # Артефакты Actions скачиваются не из любой среды, поэтому снимки кладём ещё и в релиз (он лежит рядом с ios-alpha).
+      - name: Снимки на странице релизов
+        if: always() && inputs.screens
+        continue-on-error: true
+        working-directory: native/ios
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(shots/*.png shots/report.txt shots/app.log shots/*.ips)
+          if [ "${#files[@]}" -eq 0 ]; then echo "снимков нет"; exit 0; fi
+          gh release delete ios-screens --cleanup-tag --yes || true
+          gh release create ios-screens "${files[@]}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для iPhone: снимки из симулятора, сборка ${GITHUB_RUN_NUMBER}" \
+            --notes "Экраны приложения в симуляторе iPhone (сборка ${GITHUB_RUN_NUMBER}, коммит ${GITHUB_SHA::7}). Это проверка, не установочный файл."
