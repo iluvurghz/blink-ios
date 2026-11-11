@@ -234,6 +234,8 @@ final class PlayerControllerTests: XCTestCase {
         })
         r.c.play([t("a"), t("b"), t("c", blink: true), t("d")], at: 0)
         await loaded(r)
+        // Тост доходит до подписчиков своей очередью, поэтому ждём его, а не читаем сразу после загрузки в движок.
+        await waitUntil(10, "тост") { r.seen.count >= 1 }
         XCTAssertEqual(r.engine.loads, ["load file /saved/blink:c autoplay=true"])
         XCTAssertEqual(r.c.current.track?.id, "b:c")
         XCTAssertEqual(r.seen.items.map { $0.message }, ["Пропущено 2 трека: нужен интернет"])
@@ -256,6 +258,7 @@ final class PlayerControllerTests: XCTestCase {
         })
         r.c.play([t("a"), t("b")], at: 0)
         await loaded(r)
+        await waitUntil(10, "тост") { r.seen.count >= 1 }
         XCTAssertEqual(r.seen.items.map { $0.message }, ["Трек снят или ещё не вышел"])
         XCTAssertEqual(r.c.current.track?.id, "b")
         XCTAssertEqual(r.engine.loads, ["load stream http://x/b autoplay=true"])
@@ -303,6 +306,7 @@ final class PlayerControllerTests: XCTestCase {
         await loaded(r)
         r.c.engineFailed("Не открылось")
         await loaded(r, 2)
+        await waitUntil(10, "тост") { r.seen.count >= 1 }
         XCTAssertEqual(r.seen.items.map { $0.message }, ["Не открылось"])
         XCTAssertEqual(r.c.current.track?.id, "b")
     }
