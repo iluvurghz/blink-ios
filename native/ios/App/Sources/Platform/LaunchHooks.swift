@@ -2,7 +2,7 @@ import Foundation
 import BlinkCore
 
 /// Параметры запуска для проверки в симуляторе, где на экран нельзя нажимать: какую вкладку открыть,
-/// какой запрос вписать в поиск и открыть ли плеер с первым треком. CI передаёт их переменными окружения
+/// какой запрос вписать в поиск и какой трек включить в большом плеере. CI передаёт их переменными окружения
 /// (`SIMCTL_CHILD_BLINK_START_TAB=downloads`). У пользователя этих переменных нет, и приложение ведёт себя как всегда.
 enum LaunchHooks {
     private static let env = ProcessInfo.processInfo.environment
@@ -19,19 +19,28 @@ enum LaunchHooks {
         return env["BLINK_START_QUERY"] ?? ""
     }
 
-    static var startPlayer: Bool {
-        return env["BLINK_START_PLAYER"] == "1"
+    /// `1`: первый трек из чарта (его можно играть без входа). `blink`: первый свежий трек Blink
+    /// (без входа плеер ответит «Войдите в аккаунт»).
+    static var startPlayer: String? {
+        let value = env["BLINK_START_PLAYER"]
+        return value == "1" || value == "blink" ? value : nil
     }
 
     /// Вызывается один раз после старта приложения.
     static func run(search: SearchModel, actions: Actions, nav: Nav, player: PlayerController) {
         if let tab = startTab { nav.go(tab) }
-        guard startPlayer else { return }
-        // Ждём, пока на главной появятся треки, включаем первый и открываем большой плеер.
+        guard let mode = startPlayer else { return }
+        // Ждём, пока на главной появятся треки, включаем нужный и открываем большой плеер.
         Task {
             for _ in 0..<80 {
                 let state = search.current
-                if let first = state.newest.first ?? state.chart.first {
+                let pick: Track?
+                if mode == "blink" {
+                    pick = state.newest.first(where: { OfflinePolicy.savable($0) }) ?? state.newest.first
+                } else {
+                    pick = state.chart.first
+                }
+                if let first = pick {
                     actions.play([first], at: 0)
                     nav.openPlayer(true)
                     // Состояние плеера в журнал каждые три секунды: по нему видно, пошёл ли звук (см. Diag).
