@@ -18,6 +18,7 @@ struct SearchView: View {
     init(active: Bool, bottomInset: CGFloat) {
         self.active = active
         self.bottomInset = bottomInset
+        _query = State(initialValue: LaunchHooks.startQuery)
     }
 
     var body: some View {
@@ -35,6 +36,8 @@ struct SearchView: View {
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        // Поле не пустое только при проверочном запуске в симуляторе (см. LaunchHooks); у пользователя тут ничего не происходит.
+        .task { if !query.isEmpty { graph.search.setQuery(query) } }
         .onChange(of: query) { _, text in graph.search.setQuery(text) }
         .onChange(of: active) { _, isActive in
             if !isActive { focused = false }

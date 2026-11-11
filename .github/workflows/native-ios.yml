@@ -15,6 +15,10 @@ on:
         description: "Собрать неподписанный .ipa на macOS (минуты macOS дорогие)"
         type: boolean
         default: false
+      screens:
+        description: "Запустить приложение в симуляторе iPhone и снять экраны (ещё минуты macOS)"
+        type: boolean
+        default: false
 
 # Пуш не должен отменять уже идущую сборку на macOS, поэтому группа зависит ещё и от типа запуска.
 concurrency:
@@ -50,8 +54,8 @@ jobs:
           swiftc -swift-version 5 -parse $files
 
   ipa:
-    name: Сборка .ipa (macOS)
-    if: github.event_name == 'workflow_dispatch' && inputs.ipa
+    name: Сборка на macOS
+    if: github.event_name == 'workflow_dispatch' && (inputs.ipa || inputs.screens)
     needs: core-tests
     runs-on: macos-latest
     timeout-minutes: 45
@@ -80,6 +84,7 @@ jobs:
         working-directory: native/ios
         run: xcodegen generate
       - name: Сборка без подписи
+        if: inputs.ipa
         working-directory: native/ios
         run: |
           set -o pipefail
@@ -90,7 +95,7 @@ jobs:
             BLINK_SUPABASE_ANON_KEY="${BLINK_SUPABASE_ANON_KEY:-}" \
             build 2>&1 | tee build.log
       - name: Ошибки сборки
-        if: failure()
+        if: failure() && inputs.ipa
         working-directory: native/ios
         run: |
           echo "---- error: ----"
@@ -99,6 +104,7 @@ jobs:
           grep -E "warning:" build.log | sort -u | head -40 || true
       - name: Упаковка .ipa
         id: pack
+        if: inputs.ipa
         working-directory: native/ios
         run: |
           app="build/Build/Products/Release-iphoneos/Blink.app"
@@ -109,16 +115,18 @@ jobs:
           ls -la "$out"
           echo "path=native/ios/$out" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
+        if: inputs.ipa
         with:
           name: Blink-ios-alpha
           path: ${{ steps.pack.outputs.path }}
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && inputs.ipa
         with:
           name: xcodebuild-log
           path: native/ios/build.log
           if-no-files-found: ignore
       - name: Свежая сборка на странице релизов
+        if: inputs.ipa
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -127,3 +135,72 @@ jobs:
             --prerelease --target "$GITHUB_SHA" \
             --title "Blink для iPhone, сборка ${GITHUB_RUN_NUMBER}" \
             --notes "Тестовая сборка (alpha), без подписи: ставится через ваш сертификат (Sideloadly, AltStore, TrollStore). Ветка: ${GITHUB_REF_NAME}, коммит ${GITHUB_SHA::7}."
+
+      # Симулятор iPhone: ставим сборку, запускаем и снимаем экраны. Нажимать на экран нельзя, поэтому вкладку,
+      # запрос и «открой плеер» передаём переменными окружения (см. Platform/LaunchHooks.swift).
+      - name: Сборка для симулятора
+        id: simbuild
+        if: inputs.screens
+        working-directory: native/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Blink.xcodeproj -scheme Blink -configuration Release \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath build-sim \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            BLINK_SUPABASE_ANON_KEY="${BLINK_SUPABASE_ANON_KEY:-}" \
+            build 2>&1 | tee build-sim.log | tail -n 25
+      - name: Запуск в симуляторе и снимки экрана
+        if: inputs.screens
+        timeout-minutes: 20
+        working-directory: native/ios
+        run: |
+          app="build-sim/Build/Products/Release-iphonesimulator/Blink.app"
+          test -d "$app"
+          sim="$(python3 ../tools/pick_simulator.py)"
+          udid="$(printf '%s' "$sim" | cut -f1)"
+          name="$(printf '%s' "$sim" | cut -f2)"
+          echo "Симулятор: $name ($udid)"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$udid" "$app"
+          mkdir -p shots
+          alive() {
+            local list
+            list="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null || true)"
+            grep -q "UIKitApplication:app.blink.player" <<<"$list"
+          }
+          shot() {  # shot <файл> <секунд ждать> <ПЕРЕМЕННАЯ=значение>
+            local file="$1" secs="$2"; shift 2
+            xcrun simctl terminate "$udid" app.blink.player 2>/dev/null || true
+            env "$@" xcrun simctl launch "$udid" app.blink.player
+            sleep "$secs"
+            if ! alive; then
+              echo "::error::Приложение не живо после запуска ($file)"
+              ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i blink | head -5 || true
+              for f in $(ls -t ~/Library/Logs/DiagnosticReports/Blink*.ips 2>/dev/null | head -1); do head -c 6000 "$f"; done
+              exit 1
+            fi
+            xcrun simctl io "$udid" screenshot --type=png "shots/$file.png"
+            echo "снимок $file: ok"
+          }
+          shot 01-search 14 SIMCTL_CHILD_BLINK_START_TAB=search
+          shot 02-downloads 6 SIMCTL_CHILD_BLINK_START_TAB=downloads
+          shot 03-account 6 SIMCTL_CHILD_BLINK_START_TAB=account
+          shot 04-results 14 SIMCTL_CHILD_BLINK_START_QUERY=queen
+          shot 05-player 22 SIMCTL_CHILD_BLINK_START_PLAYER=1
+          xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
+          echo "итог: приложение живо на всех шагах" | tee shots/report.txt
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.screens
+        with:
+          name: ios-simulator-shots
+          path: native/ios/shots
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.screens
+        with:
+          name: xcodebuild-sim-log
+          path: native/ios/build-sim.log
+          if-no-files-found: ignore
