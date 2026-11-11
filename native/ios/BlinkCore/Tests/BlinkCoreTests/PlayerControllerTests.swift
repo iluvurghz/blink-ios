@@ -378,7 +378,7 @@ final class PlayerControllerTests: XCTestCase {
 
     func testNavGoClosesThePlayer() async throws {
         let nav = Nav()
-        XCTAssertEqual(nav.current, NavState(tab: .search, playerOpen: false))
+        XCTAssertEqual(nav.current, NavState(tab: .flash, playerOpen: false))
         nav.openPlayer(true)
         XCTAssertTrue(nav.current.playerOpen)
         nav.go(.downloads)

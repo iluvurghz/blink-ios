@@ -9,6 +9,8 @@ public struct PlayerUi: Equatable, Sendable {
     public var durationMs: Int64
     public var hasNext: Bool
     public var hasPrevious: Bool
+    /// Сколько треков осталось в очереди после текущего.
+    public var queueLeft: Int
 
     public init(
         track: Track? = nil,
@@ -17,7 +19,8 @@ public struct PlayerUi: Equatable, Sendable {
         positionMs: Int64 = 0,
         durationMs: Int64 = 0,
         hasNext: Bool = false,
-        hasPrevious: Bool = false
+        hasPrevious: Bool = false,
+        queueLeft: Int = 0
     ) {
         self.track = track
         self.playing = playing
@@ -26,6 +29,7 @@ public struct PlayerUi: Equatable, Sendable {
         self.durationMs = durationMs
         self.hasNext = hasNext
         self.hasPrevious = hasPrevious
+        self.queueLeft = queueLeft
     }
 }
 
@@ -115,6 +119,19 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         queue = tracks
         lock.unlock()
         startTrack(min(max(0, start), tracks.count - 1), autoplay: true)
+    }
+
+    /// Дописать треки в конец очереди (Вспышка подкладывает новые, пока играет текущий).
+    public func append(_ tracks: [Track]) {
+        if tracks.isEmpty { return }
+        lock.lock()
+        queue.append(contentsOf: tracks)
+        let left = index >= 0 ? queue.count - index - 1 : 0
+        lock.unlock()
+        state.update {
+            $0.hasNext = left > 0
+            $0.queueLeft = left
+        }
     }
 
     public func toggle() {
@@ -274,6 +291,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         let track = queue[i]
         let hasNext = i + 1 < queue.count
         let hasPrevious = i > 0
+        let left = queue.count - i - 1
         phase = .resolving
         wantPlay = autoplay
         ended = false
@@ -289,6 +307,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
             $0.durationMs = Int64(max(0, track.duration)) * 1000
             $0.hasNext = hasNext
             $0.hasPrevious = hasPrevious
+            $0.queueLeft = left
         }
         let task = Task { [weak self] in
             guard let self = self else { return }

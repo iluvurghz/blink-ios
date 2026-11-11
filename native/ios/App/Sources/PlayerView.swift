@@ -22,7 +22,7 @@ struct PlayerView: View {
             if let track = ui.track {
                 let side = max(150, min(geo.size.width - 48, geo.size.height - 400))
                 VStack(spacing: 0) {
-                    header
+                    header(track)
                     Spacer(minLength: 0)
                     Cover(track.artwork, size: side, radius: 28, note: 72)
                         .gesture(closeDrag)
@@ -55,11 +55,11 @@ struct PlayerView: View {
         .accessibilityAddTraits(.isModal)
     }
 
-    private var header: some View {
+    private func header(_ track: Track) -> some View {
         HStack(spacing: 0) {
             IconButton(.expandMore, "Свернуть плеер", action: onClose)
             T("СЕЙЧАС ИГРАЕТ", .label, color: Ink.mute, align: .center, fill: true)
-            Color.clear.frame(width: 44, height: 44)
+            LikeButton(track: track)
         }
         .frame(height: 56)
         .contentShape(Rectangle())

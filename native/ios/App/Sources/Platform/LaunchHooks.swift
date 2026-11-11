@@ -9,6 +9,8 @@ enum LaunchHooks {
 
     static var startTab: AppTab? {
         switch env["BLINK_START_TAB"] {
+        case "flash": return .flash
+        case "search": return .search
         case "downloads": return .downloads
         case "account": return .account
         default: return nil

@@ -15,7 +15,7 @@ enum Chrome {
     }
 }
 
-/// Корень интерфейса. Три вкладки живут все сразу (прокрутка и текст в поле не теряются), поверх них
+/// Корень интерфейса. Четыре вкладки живут все сразу (прокрутка и текст в поле не теряются), поверх них
 /// плавающая панель, большой плеер и тосты. Порт ui/Root.kt.
 struct RootView: View {
     @EnvironmentObject private var graph: Graph
@@ -30,6 +30,8 @@ struct RootView: View {
 
         ZStack(alignment: .bottom) {
             Ink.ink.ignoresSafeArea()
+            FlashView(bottomInset: chrome + 16)
+                .screen(tab == .flash)
             SearchView(active: tab == .search, bottomInset: chrome + 16)
                 .screen(tab == .search)
             DownloadsView(bottomInset: chrome + 16)
@@ -80,6 +82,7 @@ private struct BottomBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            TabItem(glyph: .bolt, label: "Вспышка", active: tab == .flash, dot: false) { onTab(.flash) }
             TabItem(glyph: .search, label: "Поиск", active: tab == .search, dot: false) { onTab(.search) }
             TabItem(glyph: .download, label: "Скачанное", active: tab == .downloads, dot: downloading) { onTab(.downloads) }
             TabItem(glyph: .person, label: "Профиль", active: tab == .account, dot: false) { onTab(.account) }

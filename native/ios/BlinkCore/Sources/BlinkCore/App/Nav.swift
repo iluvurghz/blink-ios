@@ -2,6 +2,7 @@ import Foundation
 
 /// Вкладки приложения. Названо не `Tab`, чтобы не спорить с типом SwiftUI.
 public enum AppTab: Equatable, Sendable {
+    case flash
     case search
     case downloads
     case account
@@ -11,7 +12,7 @@ public struct NavState: Equatable, Sendable {
     public var tab: AppTab
     public var playerOpen: Bool
 
-    public init(tab: AppTab = .search, playerOpen: Bool = false) {
+    public init(tab: AppTab = .flash, playerOpen: Bool = false) {
         self.tab = tab
         self.playerOpen = playerOpen
     }

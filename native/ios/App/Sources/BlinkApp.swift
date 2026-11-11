@@ -26,6 +26,7 @@ struct BlinkApp: App {
                 .environmentObject(graph.hasTrackStore)
                 .environmentObject(graph.downloadingStore)
                 .environmentObject(graph.toastCenter)
+                .environmentObject(graph.flash)
                 .preferredColorScheme(.dark)
                 .tint(Ink.accent)
                 .task { graph.start() }

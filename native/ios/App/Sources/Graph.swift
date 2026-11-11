@@ -44,6 +44,10 @@ final class Graph: ObservableObject {
     let search: SearchModel
     let player: PlayerController
     let actions: Actions
+    let flash: FlashController
+    private let library: LibraryStore
+    private let librarySync: LibrarySync
+    private let webAuth = WebAuth()
     private let nowPlaying: NowPlayingBridge
 
     let navStore: NavStore
@@ -63,6 +67,7 @@ final class Graph: ObservableObject {
     private var seenUser = false
     private var lastUserId: String?
     private var tokens: [NetworkObservation] = []
+    private var pushWork: DispatchWorkItem?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     init() {
@@ -122,6 +127,28 @@ final class Graph: ObservableObject {
             platform: IOSPlatformActions()
         )
         late.set(actions)
+
+        // Вспышка и лайки: состояние на устройстве, лайки и история синхронизируются с аккаунтом.
+        let library = LibraryStore(FileBlob(name: "library.json"))
+        let settings = WaveSettingsBox()
+        let engine = WaveEngine(
+            source: WaveApi(http: http, config: config),
+            store: WaveStore(FileBlob(name: "wave.json")),
+            library: library,
+            settings: { settings.value }
+        )
+        self.library = library
+        self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })
+        self.flash = FlashController(
+            engine: engine,
+            library: library,
+            player: player,
+            actions: actions,
+            api: api,
+            toasts: toasts,
+            network: network,
+            settings: settings
+        )
 
         self.config = config
         self.auth = auth
@@ -186,6 +213,8 @@ final class Graph: ObservableObject {
             let current = search.current
             if online && current.newest.isEmpty && current.chart.isEmpty { search.refreshHome() }
         })
+        flash.attach()
+        tokens.append(library.observe { [weak self] _ in self?.libraryChanged() })
         search.refreshHome()
         LaunchHooks.run(search: search, actions: actions, nav: nav, player: player)
     }
@@ -201,7 +230,48 @@ final class Graph: ObservableObject {
             plus.clear()
         } else {
             let plus = self.plus
-            Task { _ = await plus.refresh() }
+            let sync = librarySync
+            Task {
+                _ = await plus.refresh()
+                _ = await sync.pull()
+            }
+        }
+    }
+
+    /// Лайки меняются пачками: отправляем на сервер через три секунды после последнего изменения.
+    private func libraryChanged() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pushWork?.cancel()
+            let sync = self.librarySync
+            let work = DispatchWorkItem { Task { _ = await sync.push() } }
+            self.pushWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        }
+    }
+
+    /// Вход через сайт: Google или Telegram в окне браузера, потом возврат по blink://auth.
+    func signIn(with provider: AuthLink.Provider) {
+        guard let url = URL(string: AuthLink.startURL(base: config.base, provider: provider)) else { return }
+        webAuth.start(url) { [weak self] callback in
+            guard let self = self, let callback = callback else { return }
+            self.finishSignIn(callback)
+        }
+    }
+
+    private func finishSignIn(_ url: String) {
+        guard let link = AuthLink.parse(url) else { return }
+        let auth = self.auth
+        let toasts = self.toasts
+        Task {
+            do {
+                _ = try await auth.finish(link)
+                toasts.show("Вы вошли")
+            } catch let failure as AuthException {
+                toasts.show(failure.message)
+            } catch {
+                toasts.show("Вход не получился, попробуйте ещё раз")
+            }
         }
     }
 

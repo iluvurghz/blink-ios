@@ -1,7 +1,7 @@
 import SwiftUI
 import BlinkCore
 
-/// Профиль: вход, статус Blink+, место на телефоне. Вход по почте и паролю; Google и Telegram придут позже.
+/// Профиль: вход, статус Blink+, место на телефоне. Вход по почте и паролю, через Google или Telegram.
 /// Порт ui/AccountScreen.kt.
 struct AccountView: View {
     @EnvironmentObject private var graph: Graph
@@ -188,6 +188,13 @@ private struct SignInCard: View {
             }
             PillButton(busy ? "Входим…" : "Войти", enabled: !busy) { submit() }
                 .padding(.top, 16)
+            T("или через сайт", .small, color: Ink.faint)
+                .padding(.top, 18)
+            HStack(spacing: 10) {
+                PillButton("Google", primary: false) { graph.signIn(with: .google) }
+                PillButton("Telegram", primary: false) { graph.signIn(with: .telegram) }
+            }
+            .padding(.top, 10)
         }
     }
 
