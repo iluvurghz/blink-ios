@@ -168,12 +168,43 @@ final class FakeBackend: Transport, @unchecked Sendable {
     private var inFlight = 0
     private var peak = 0
 
+    private var resolveLog: [HTTPRequest] = []
+    private var playLog: [HTTPRequest] = []
+
     /// Подмена ответа на файл: (запрос, номер запроса к этому id с 1) → ответ или nil (обычное поведение).
     var fileHook: (@Sendable (Recorded, Int) -> Reply?)?
+    /// Подмена ответа резолвера.
+    var resolveHook: (@Sendable (HTTPRequest) -> HTTPResponse?)?
+    /// Резолвера на сервере ещё нет: `/api/offline/resolve` отвечает 404 без нашего JSON.
+    var legacyOnly = false
     var throttleChunk = 0
     var throttleMs: UInt64 = 100
 
     let base = "http://backend.test"
+
+    var resolveRequests: [HTTPRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return resolveLog
+    }
+
+    var playRequests: [HTTPRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return playLog
+    }
+
+    func logResolve(_ r: HTTPRequest) {
+        lock.lock()
+        resolveLog.append(r)
+        lock.unlock()
+    }
+
+    func logPlay(_ r: HTTPRequest) {
+        lock.lock()
+        playLog.append(r)
+        lock.unlock()
+    }
 
     var fileRequests: [Recorded] {
         lock.lock()
@@ -326,6 +357,62 @@ struct BackendResolver: TrackResolver {
 
     func resolve(source: String, id: String) async throws -> Resolved {
         return try backend.resolved(id)
+    }
+}
+
+// ---------- короткие запросы к серверу (резолвер) ----------
+
+func jsonReply(_ status: Int, _ body: String) -> HTTPResponse {
+    return HTTPResponse(status: status, headers: ["Content-Type": "application/json"], data: Data(body.utf8))
+}
+
+func jsonObjectReply(_ status: Int, _ object: [String: Any]) -> HTTPResponse {
+    let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+    return HTTPResponse(status: status, headers: ["Content-Type": "application/json"], data: data)
+}
+
+func queryValue(_ request: HTTPRequest, _ name: String) -> String? {
+    return URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value
+}
+
+extension FakeBackend: HTTPClient {
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        let path = request.url.path
+        if path == "/api/offline/resolve" { return resolveReply(request) }
+        if path.hasPrefix("/api/play/") { return playReply(request, String(path.dropFirst("/api/play/".count))) }
+        return HTTPResponse(status: 404, data: Data("not found".utf8))
+    }
+
+    private func resolveReply(_ req: HTTPRequest) -> HTTPResponse {
+        logResolve(req)
+        if let hooked = resolveHook?(req) { return hooked }
+        if legacyOnly { return HTTPResponse(status: 404, data: Data("Cannot GET /api/offline/resolve".utf8)) }
+        if req.headers["Authorization"] == nil {
+            return jsonObjectReply(401, ["ok": false, "error": "NOT_ALLOWED", "reason": "auth"])
+        }
+        let id = queryValue(req, "id") ?? ""
+        guard let f = fixture(id) else {
+            return jsonObjectReply(404, ["ok": false, "error": "NOT_DOWNLOADABLE", "reason": "missing"])
+        }
+        var body: [String: Any] = [
+            "ok": true,
+            "source": "blink",
+            "id": id,
+            "url": "\(base)/media/\(id)?sig=\(resolveRequests.count)",
+            "mime": f.contentType,
+            "duration": f.duration,
+            "expiresAt": Int64(Date().timeIntervalSince1970 * 1000) + 3_600_000,
+        ]
+        if let b = f.resolveBytes { body["bytes"] = b }
+        if let e = f.etag { body["etag"] = e }
+        return jsonObjectReply(200, body)
+    }
+
+    private func playReply(_ req: HTTPRequest, _ id: String) -> HTTPResponse {
+        logPlay(req)
+        if req.headers["Authorization"] == nil { return jsonObjectReply(401, ["error": "auth"]) }
+        if fixture(id) == nil { return jsonObjectReply(404, ["error": "not_found"]) }
+        return jsonObjectReply(200, ["url": "/media/\(id)?legacy=1"])
     }
 }
 
