@@ -17,6 +17,8 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var explicit: Bool
     public var year: String
     public var genre: String
+    /// Дата выхода (ISO), если сервер её отдаёт: нужна «Вспышке» для свежести.
+    public var released: String?
     public var source: String?
     public var lic: String?
     public var lrc: String?
@@ -37,6 +39,7 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
         explicit: Bool = false,
         year: String = "",
         genre: String = "",
+        released: String? = nil,
         source: String? = nil,
         lic: String? = nil,
         lrc: String? = nil,
@@ -55,6 +58,7 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.explicit = explicit
         self.year = year
         self.genre = genre
+        self.released = released
         self.source = source
         self.lic = lic
         self.lrc = lrc
@@ -69,7 +73,7 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, artist, artistId, album, albumId, artwork, duration, explicit, year, genre
+        case id, title, artist, artistId, album, albumId, artwork, duration, explicit, year, genre, released
         case source, lic, lrc, lyrics, offline, stream
     }
 
@@ -108,6 +112,7 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.explicit = (try? c.decodeIfPresent(Bool.self, forKey: .explicit)) ?? false
         self.year = str(.year) ?? ""
         self.genre = str(.genre) ?? ""
+        self.released = str(.released)
         self.source = str(.source)
         self.lic = str(.lic)
         self.lrc = str(.lrc)
@@ -129,6 +134,7 @@ public struct Track: Codable, Equatable, Hashable, Sendable, Identifiable {
         try c.encode(explicit, forKey: .explicit)
         try c.encode(year, forKey: .year)
         try c.encode(genre, forKey: .genre)
+        try c.encodeIfPresent(released, forKey: .released)
         try c.encodeIfPresent(source, forKey: .source)
         try c.encodeIfPresent(lic, forKey: .lic)
         try c.encodeIfPresent(lrc, forKey: .lrc)
