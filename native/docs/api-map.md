@@ -38,7 +38,10 @@
 
 | Запрос | Что |
 |---|---|
-| `GET /api/play/:licId` | `{url}`: подписанная ссылка на `/media/:id` на час. Только лицензионные треки (`lic_tracks.status='live'`). |
+| `GET /api/offline/resolve?source=blink&id=<uuid>` | Резолвер офлайна (контракт v1): `{ok:true, source, id, url, mime, bytes, duration, etag, expiresAt}`. Ошибки `{ok:false, error, reason, message}`: 401 `NOT_ALLOWED/auth`, 403 `NOT_ALLOWED/plus\|artist\|source`, 404 `NOT_DOWNLOADABLE`, 400 и 5xx `SOURCE_ERROR`. К самой ссылке `url` заголовок Authorization не добавлять. На прод может ещё не быть, тогда клиент берёт запасной путь ниже. |
+| `GET /api/play/:licId` | `{url}`: подписанная ссылка на `/media/:id` на час. Только лицензионные треки (`lic_tracks.status='live'`). Запасной путь для офлайна: размер берётся из `Content-Range`, проверки Blink+ и `offline_allowed` только на клиенте. |
+| `GET /api/plus/me` | Состояние Blink+ текущего пользователя: нужно приложению, чтобы решать, можно ли сохранять и играть сохранённое без сети. |
+| `GET /media/:id?sig=…` | Файл по подписанной ссылке из резолвера: `Accept-Ranges: bytes`, 206 на `Range` (открытый Range режется до 2 МиБ), `ETag` слабый, `If-Range` сверяется строкой. Заголовок Authorization не нужен. |
 | `POST /api/streams {trackId, seconds, offline?}` | Учёт прослушивания (с 30 секунд). |
 | `POST /api/presence`, `/api/together/*` (SSE), `/api/plus/*`, `/api/profile/*`, `/api/artist/*`, `/api/tracks*`, `/api/auth/telegram` | Не проверено подробно, нужны с M1. |
 
@@ -46,11 +49,12 @@
 
 - Auth (GoTrue): e-mail, Google (id-token), Telegram (через `/api/auth/telegram` → `token_hash`).
 - PostgREST: `lic_tracks` (каталог лицензионных), `artists`, `follows`, `track_likes`, `posts`, `comments`, `shared_playlists`, `editorial_playlists`, `plays`, `user_devices`; RPC `artist_stats`, `post_list`, `comment_list`, `blink_stats`; Edge Function `charts`.
-- Анонимный ключ (`anon key`) публичный и лежит в бандле сайта; в этот репозиторий не копировал, возьмём из сборки в M1.
+- Анонимный ключ (`anon key`) публичный и лежит в бандле сайта; в репозиторий не копируется. Сборка берёт его из секрета `BLINK_SUPABASE_ANON_KEY`, а если секрета нет, сама находит в бандле сайта (`native/tools/find_anon_key.py`). Без ключа приложение собирается, но вход отключён.
 
 ## Что нужно нативке в M0
 
-Поиск: `itunes/search` + `yandex/search` (слить и убрать дубли по `название|артист`, как делает `api.js`).
-Играть и качать: `apiblink/play` → `streamUrl` (до появления резолвера офлайна).
-Лицензионные треки: `/api/play/:id` (нужен вход, M1).
-Чарты для кнопки «Вспышка» без сида: `charts/top`.
+- Поиск: `itunes/search` + `yandex/search` (слить и убрать дубли по `название|артист`, как делает `api.js`). Лицензионный каталог (`lic_tracks`) поднимается наверх с меткой BLINK.
+- Играть онлайн: `apiblink/play` → `streamUrl`; лицензионные: `/api/play/:id` (нужен вход).
+- Качать для офлайна: только `source=blink` через `offline/resolve` (запасной путь `/api/play/:id`). Все остальные источники в офлайн не идут, приложение пишет «Этот трек играет только онлайн».
+- Состояние Blink+: `plus/me`.
+- Чарты для ленты без сида: `charts/top`.
