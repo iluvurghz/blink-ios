@@ -104,7 +104,7 @@ private struct TabItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: 5) {
                 ZStack(alignment: .topTrailing) {
                     GlyphView(glyph, color: active ? Ink.accent : Ink.mute, size: 22)
                     if dot {
@@ -112,7 +112,8 @@ private struct TabItem: View {
                     }
                 }
                 if active {
-                    T(label, BType.button.sized(13), color: Ink.accent, lines: 1)
+                    T(label, BType.button.sized(12), color: Ink.accent, lines: 1)
+                        .minimumScaleFactor(0.75)
                 }
             }
             .frame(maxWidth: .infinity)

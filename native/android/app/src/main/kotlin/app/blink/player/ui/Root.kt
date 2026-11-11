@@ -128,8 +128,8 @@ private fun TabItem(glyph: Glyphs, label: String, active: Boolean, dot: Boolean,
                 }
             }
             if (active) {
-                Spacer(Modifier.width(7.dp))
-                T(label, style = Type.button.copy(fontSize = 13.sp), color = Ink.accent, maxLines = 1)
+                Spacer(Modifier.width(5.dp))
+                T(label, style = Type.button.copy(fontSize = 12.sp), color = Ink.accent, maxLines = 1)
             }
         }
     }
