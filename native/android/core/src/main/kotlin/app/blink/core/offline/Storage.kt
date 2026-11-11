@@ -32,7 +32,6 @@ interface Storage {
     fun partSize(key: String): Long
     fun appendPart(key: String, bytes: ByteArray, off: Int, len: Int)
     fun truncatePart(key: String, size: Long)
-    fun readPart(key: String, start: Long, end: Long): ByteArray
     fun listParts(): List<String>
     fun deletePart(key: String)
 
@@ -157,7 +156,8 @@ class FileStorage(private val root: File) : Storage {
     }
 
     @Synchronized
-    override fun readPart(key: String, start: Long, end: Long): ByteArray {
+    /** Только для проверок в тестах: контракт v1 (поправка 2) убрал чтение .part из адаптера. */
+    fun readPart(key: String, start: Long, end: Long): ByteArray {
         closeWriter(key)
         val file = f(key, ".part")
         if (!file.isFile || end <= start) return ByteArray(0)

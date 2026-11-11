@@ -44,7 +44,10 @@ class Downloader(
         var etag: String?,
         var total: Long?,
         var mime: String?,
+        /** Длина .part, как её сообщило хранилище (I4: по ней считается Range). */
         var have: Long,
+        /** Сколько байт загрузчик принял и передал хранилищу, считается отдельно от него (поправка 2). */
+        var accepted: Long = have,
     )
 
     private enum class Step { MORE, DONE, EXPIRED, RESTART }
@@ -78,7 +81,9 @@ class Downloader(
             if (total != null && ctx.have == total) break
             if (total != null && ctx.have > total) reset(key, ctx)
 
-            when (fetch(job, ctx, hooks)) {
+            val step = fetch(job, ctx, hooks)
+            checkAccepted(key, ctx)
+            when (step) {
                 Step.MORE -> Unit
                 Step.DONE -> break
                 Step.RESTART -> if (++restarts > MAX_RESTARTS) throw OfflineException(OfflineCode.SOURCE_ERROR, "restart_loop")
@@ -97,9 +102,8 @@ class Downloader(
 
         hooks.onStage(Stage.VERIFYING)
         val have2 = storage.partSize(key)
-        val head = storage.readPart(key, 0, Content.SNIFF_BYTES.toLong())
         try {
-            if (!Content.magicOk(head)) throw OfflineException(OfflineCode.BAD_CONTENT, "magic")
+            checkAccepted(key, ctx)
             Content.verifyFinal(have2, ctx.total, resolved.bytes, resolved.duration ?: job.meta.duration)
         } catch (e: OfflineException) {
             storage.truncatePart(key, 0) // битые данные не докачиваем
@@ -144,6 +148,18 @@ class Downloader(
     private fun reset(key: String, ctx: Ctx) {
         storage.truncatePart(key, 0)
         ctx.have = 0
+        ctx.accepted = 0
+    }
+
+    /**
+     * Поправка 2: длина .part в хранилище обязана равняться числу принятых байт. Если часть записи потерялась
+     * (файл тронули снаружи, диск соврал), докачивать нельзя: .part выбрасывается, ошибка BAD_CONTENT/truncated.
+     */
+    private fun checkAccepted(key: String, ctx: Ctx) {
+        if (storage.partSize(key) != ctx.accepted) {
+            storage.truncatePart(key, 0)
+            throw OfflineException(OfflineCode.BAD_CONTENT, "truncated")
+        }
     }
 
     // ---------- один запрос ----------
@@ -233,6 +249,7 @@ class Downloader(
             if (pLen > 0) {
                 storage.appendPart(key, pending, 0, pLen)
                 ctx.have += pLen
+                ctx.accepted += pLen
                 pLen = 0
             }
         }

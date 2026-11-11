@@ -20,6 +20,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 
@@ -169,6 +171,41 @@ class OfflineManagerTest {
         backend.fileHook = null
         m.retry(key("a"))
         m.until { it.saved.size == 1 }
+    }
+
+    @Test
+    fun `retry counter starts over whenever a failed attempt made progress`() = run {
+        val f = backend.add("a", 3_000_000, duration = 60)
+        // шесть обрывов подряд (больше четырёх повторов), но каждый после новых байт: это не «сбои без прогресса»
+        backend.fileHook = { req, n -> if (n <= 6) backend.cutAt(f, req, 300_000) else null }
+        val m = manager().ready()
+        m.enqueue(listOf(candidate("a", 60)))
+        m.until { it.saved.size == 1 }
+        assertEquals(7, backend.fileRequests.size)
+        assertContentEquals(f.bytes, File(m.audioPath(key("a"))!!).readBytes())
+        assertEquals(
+            listOf<String?>(null, "bytes=300000-", "bytes=600000-", "bytes=900000-", "bytes=1200000-", "bytes=1500000-", "bytes=1800000-"),
+            backend.fileRequests.map { it.getHeader("Range") },
+        )
+    }
+
+    @Test
+    fun `failures without progress still stop after four retries, the kept part resumes on Retry`() = run {
+        val f = backend.add("a", 3_000_000, duration = 60)
+        // первая попытка продвинулась, дальше сервер только отвечает 500: четыре повтора без прогресса и стоп
+        backend.fileHook = { req, n -> if (n == 1) backend.cutAt(f, req, 300_000) else MockResponse().setResponseCode(500) }
+        val m = manager().ready()
+        m.enqueue(listOf(candidate("a", 60)))
+        val failed = m.until { it.jobs.singleOrNull()?.failed == true }
+        assertEquals(5, backend.fileRequests.size, "один обрыв с прогрессом и четыре повтора без него")
+        assertEquals(OfflineCode.SOURCE_ERROR, failed.jobs.single().code)
+        assertEquals(300_000L, storage().partSize(key("a")), "накопленное не выброшено")
+
+        backend.fileHook = null
+        m.retry(key("a"))
+        m.until { it.saved.size == 1 }
+        assertEquals("bytes=300000-", backend.fileRequests[5].getHeader("Range"), "первый запрос после «Повторить» идёт с места обрыва")
+        assertContentEquals(f.bytes, File(m.audioPath(key("a"))!!).readBytes())
     }
 
     @Test
@@ -383,6 +420,69 @@ class OfflineManagerTest {
         assertNull(byKey[key("oldrefusal")])
         assertNull(st.getMeta(MetaKind.JOB, key("brokenjob")))
         assertEquals(setOf(key("live"), key("wrongsize"), key("refused")), s.jobs.map { it.key }.toSet())
+    }
+
+    // ---------- потерянный файл (поправка 2, I6) ----------
+
+    private fun lostEntry(id: String, withTrack: Boolean) = ManifestEntry(
+        key = key(id), source = "blink", id = id, title = "Lost $id", artist = "A", duration = 10, bytes = 400_000,
+        savedAt = System.currentTimeMillis(),
+        track = if (withTrack) buildJsonObject { put("id", JsonPrimitive("b:$id")); put("title", JsonPrimitive("Lost $id")) } else null,
+    )
+
+    @Test
+    fun `a saved track whose audio vanished is re-queued silently, one without a track object is just forgotten`() = run {
+        val f = backend.add("gone", 400_000)
+        backend.add("bare", 400_000)
+        val st = storage().also { it.open() }
+        st.putMeta(MetaKind.ENTRY, key("gone"), lostEntry("gone", withTrack = true).encode())
+        st.putMeta(MetaKind.ENTRY, key("bare"), lostEntry("bare", withTrack = false).encode())
+
+        val m = manager(st = st)
+        val events = java.util.concurrent.CopyOnWriteArrayList<OfflineEvent>()
+        val watcher = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { m.events.collect { events.add(it) } }
+        m.ready()
+        val s = m.until { it.saved.size == 1 && it.jobs.isEmpty() }
+
+        assertEquals(setOf(key("gone")), s.savedKeys)
+        assertEquals("Lost gone", s.saved.single().title)
+        assertNotNull(s.saved.single().track, "объект трека пережил восстановление")
+        assertContentEquals(f.bytes, File(m.audioPath(key("gone"))!!).readBytes())
+        assertNull(st.getMeta(MetaKind.ENTRY, key("bare")))
+        assertTrue(backend.fileRequests.none { it.path?.startsWith("/media/bare") == true }, "без объекта трека ничего не качаем")
+        delay(300)
+        assertTrue(events.isEmpty(), "тихо: ни итога пакета, ни тоста, получили $events")
+        watcher.cancel()
+    }
+
+    @Test
+    fun `a silent re-queue that is refused stays as a failed card without a toast, Retry turns it into a normal batch`() = run {
+        backend.add("gone", 400_000)
+        val st = storage().also { it.open() }
+        st.putMeta(MetaKind.ENTRY, key("gone"), lostEntry("gone", withTrack = true).encode())
+        var refuse = true
+        val resolver = TrackResolver { source, id ->
+            if (refuse) throw OfflineException(OfflineCode.NOT_ALLOWED, "plus")
+            backend.resolver().resolve(source, id)
+        }
+        val m = manager(st = st, resolver = resolver)
+        val events = java.util.concurrent.CopyOnWriteArrayList<OfflineEvent>()
+        val watcher = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { m.events.collect { events.add(it) } }
+        m.ready()
+
+        val failed = m.until { it.jobs.singleOrNull()?.failed == true }
+        assertEquals(OfflineCode.NOT_ALLOWED, failed.jobs.single().code)
+        delay(300)
+        assertTrue(events.isEmpty(), "про тихую постановку тоста нет: $events")
+
+        refuse = false
+        m.retry(key("gone"))
+        m.until { it.saved.size == 1 && it.jobs.isEmpty() }
+        delay(300)
+        val done = assertIs<OfflineEvent.BatchDone>(events.single())
+        assertEquals(1, done.ok)
+        assertEquals(1, done.total)
+        watcher.cancel()
     }
 
     // ---------- хранилище ----------

@@ -95,6 +95,12 @@ class OfflineManager(
         var retryAt: Long = 0
         var requeue: Boolean = false
         var cancelled: Boolean = false
+
+        /** Длина .part в начале попытки: если к концу выросла, попытка шла не вхолостую (поправка 2, повторы). */
+        @Volatile var haveAtStart: Long = 0
+
+        /** Задача, поставленная самим менеджером (восстановление потерянного файла): без тостов про пакет. */
+        var silent: Boolean = false
     }
 
     private val lock = Any()
@@ -158,11 +164,25 @@ class OfflineManager(
         }
         val audio = storage.listAudio().toSet()
 
-        // Запись без звука: файл пропал, записи нет смысла.
+        // Запись без звука: файл пропал. Запись удаляем, а если у неё есть объект трека, тихо ставим скачивание заново
+        // (поправка 2): человек сохранял этот трек и вправе ждать, что он снова будет на телефоне.
+        val silentKeys = HashSet<String>()
         for (key in entries.keys.toList()) {
-            if (key !in audio) {
-                storage.delMeta(MetaKind.ENTRY, key)
-                entries.remove(key)
+            if (key in audio) continue
+            val lost = entries.remove(key) ?: continue
+            storage.delMeta(MetaKind.ENTRY, key)
+            if (lost.track != null && key !in onDisk) {
+                val job = OfflineJob(
+                    key = lost.key, source = lost.source, id = lost.id,
+                    meta = JobMeta(
+                        title = lost.title, artist = lost.artist, album = lost.album, cover = lost.cover,
+                        duration = lost.duration, offlineAllowed = lost.offlineAllowed, track = lost.track,
+                    ),
+                    createdAt = t,
+                )
+                storage.putMeta(MetaKind.JOB, key, job.encode())
+                onDisk[key] = job
+                silentKeys.add(key)
             }
         }
         // Звук без записи: упали между commit и манифестом (достраиваем из job, если размер сошёлся) либо сирота.
@@ -200,7 +220,10 @@ class OfflineManager(
                 }
                 continue
             }
-            jobs[key] = Rt(j.copy(state = Stage.QUEUED.name)).also { it.have = storage.partSize(key) }
+            jobs[key] = Rt(j.copy(state = Stage.QUEUED.name)).also {
+                it.have = storage.partSize(key)
+                it.silent = key in silentKeys
+            }
         }
         for (key in storage.listParts()) if (key !in jobs) storage.deletePart(key)
 
@@ -292,7 +315,7 @@ class OfflineManager(
             batchFailures.removeAll { it.key == key }
             val runner = rt.runner
             if (runner != null) runner.cancel() else storage.remove(key)
-            if (batchTotal > 0 && rt.stage != Stage.FAILED) batchTotal--
+            if (batchTotal > 0 && rt.stage != Stage.FAILED && !rt.silent) batchTotal--
             checkBatchDone()
         }
         publish()
@@ -360,6 +383,7 @@ class OfflineManager(
         rt.job = rt.job.copy(state = Stage.QUEUED.name, attempts = 0, code = null, reason = null, failedAt = null)
         rt.stage = Stage.QUEUED
         rt.retryAt = 0
+        rt.silent = false // человек сам нажал «Повторить»: итог пакета ему положен
         batchFailures.removeAll { it.key == rt.job.key }
         batchTotal++
         try {
@@ -390,6 +414,7 @@ class OfflineManager(
                 if (rt.runner == null && rt.stage == Stage.QUEUED && rt.retryAt <= t) {
                     rt.requeue = false
                     rt.stage = Stage.RESOLVING
+                    rt.haveAtStart = rt.have
                     rt.runner = scope.launch(Dispatchers.IO) { work(rt) }
                     running++
                 }
@@ -469,7 +494,7 @@ class OfflineManager(
             storage.delMeta(MetaKind.JOB, key) // I5: задача уходит только после записи
             jobs.remove(key)
             saved[key] = entry
-            batchOk++
+            if (!rt.silent) batchOk++
             checkBatchDone()
             null
         } catch (e: Exception) {
@@ -485,8 +510,10 @@ class OfflineManager(
             rt.have = storage.partSize(job.key)
             return null
         }
-        if (e.code.retryable && job.attempts < config.retryDelaysMs.size) {
-            val attempts = job.attempts + 1
+        // Считаем сбои подряд без прогресса: если в упавшей попытке байты шли, счёт начинается заново.
+        val streak = if (storage.partSize(job.key) > rt.haveAtStart) 0 else job.attempts
+        if (e.code.retryable && streak < config.retryDelaysMs.size) {
+            val attempts = streak + 1
             rt.job = job.copy(attempts = attempts)
             persistJob(rt)
             rt.stage = Stage.QUEUED
@@ -504,7 +531,7 @@ class OfflineManager(
         rt.job = job.copy(state = Stage.FAILED.name, code = e.code.name, reason = e.reason, failedAt = now())
         persistJob(rt)
         rt.stage = Stage.FAILED
-        batchFailures.add(Failure(job.key, job.meta.title, e.code, e.reason))
+        if (!rt.silent) batchFailures.add(Failure(job.key, job.meta.title, e.code, e.reason))
         checkBatchDone()
         return null
     }

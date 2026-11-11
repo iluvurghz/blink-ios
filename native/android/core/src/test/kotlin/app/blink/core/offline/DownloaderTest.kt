@@ -300,6 +300,25 @@ class DownloaderTest {
     }
 
     @Test
+    fun `part shorter than the accepted bytes is BAD_CONTENT truncated, the part is dropped and nothing is committed`() {
+        backend.add("a", 1_500_000, duration = 60)
+        var batches = 0
+        val lossy = object : Storage by storage {
+            override fun appendPart(key: String, bytes: ByteArray, off: Int, len: Int) {
+                if (++batches == 2) return // вторая порция «принята», но на диске её нет
+                storage.appendPart(key, bytes, off, len)
+            }
+        }
+        val key = Key.of("blink", "a")
+        val e = assertFailsWith<OfflineException> { run { downloader(st = lossy).download(job("a", duration = 60)) } }
+        assertEquals(OfflineCode.BAD_CONTENT, e.code)
+        assertEquals("truncated", e.reason)
+        assertEquals(0L, storage.partSize(key), "битое не докачиваем")
+        assertNull(storage.audioPath(key))
+        assertEquals(1, backend.fileRequests.size, "поверх битого не качаем дальше")
+    }
+
+    @Test
     fun `cancel keeps the verified prefix and commits nothing`() {
         val f = backend.add("slow", 3_000_000, duration = 60)
         backend.fileHook = { req, _ -> backend.serve(f, req).throttleBody(200_000, 100, TimeUnit.MILLISECONDS) }
