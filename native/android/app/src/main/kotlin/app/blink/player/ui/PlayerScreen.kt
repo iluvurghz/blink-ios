@@ -121,6 +121,8 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 PillButton("В плейлист", { g.pickTrack.value = track }, primary = false)
                 Spacer(Modifier.width(10.dp))
                 PillButton("Поделиться", { scope.launch { g.actions.share(g.shared.trackLink(track)) } }, primary = false)
+                Spacer(Modifier.width(10.dp))
+                PillButton("О треке", { g.infoTrack.value = track }, primary = false)
             }
             Spacer(Modifier.height(12.dp))
             SaveChip(SaveUi.of(track, offline), OfflinePolicy.keyOf(track) in offline.savedKeys) { onSaveTap(g, track, offline) }

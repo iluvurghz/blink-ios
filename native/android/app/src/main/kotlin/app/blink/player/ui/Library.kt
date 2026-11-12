@@ -361,8 +361,12 @@ fun ArtistScreen(g: Graph) {
                         }, primary = false)
                     }
                 }
+                Spacer(Modifier.height(10.dp))
+                SimilarArtists(g, p.name)
                 Spacer(Modifier.height(14.dp))
                 TrackList(g, p.tracks, emptyText = "Пока нет треков.", onRemove = null)
+                Spacer(Modifier.height(22.dp))
+                PostsSection(g, p.id, own = session?.userId != null && session?.userId == p.userId, tracks = p.tracks)
             }
         }
     }

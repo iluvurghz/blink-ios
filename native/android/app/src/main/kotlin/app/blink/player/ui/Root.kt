@@ -76,6 +76,8 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Overlay.Plus -> PlusScreen(g)
             Overlay.Library -> LibraryScreen(g)
             Overlay.Artist -> ArtistScreen(g)
+            Overlay.Support -> SupportScreen(g)
+            Overlay.Cabinet -> CabinetScreen(g)
             Overlay.None -> Unit
         }
 
@@ -96,6 +98,7 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         }
 
         PlaylistPicker(g)
+        TrackInfoSheet(g)
 
         ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 150 else 90)
     }

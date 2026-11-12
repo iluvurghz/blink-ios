@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class Tab { Flash, Search, Downloads, Account }
 
 /** Экраны поверх вкладок: комната, друзья, Blink+. */
-enum class Overlay { None, Room, Friends, Plus, Library, Artist }
+enum class Overlay { None, Room, Friends, Plus, Library, Artist, Support, Cabinet }
 
 /** Что открыто внутри экрана «Музыка»: список плейлистов, любимое, плейлист, чужой плейлист по ссылке, подборка редакции. */
 sealed interface LibRoute {

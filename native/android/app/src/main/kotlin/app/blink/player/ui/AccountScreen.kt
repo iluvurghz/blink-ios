@@ -119,6 +119,24 @@ fun AccountScreen(g: Graph) {
 
         Spacer(Modifier.height(14.dp))
         Card {
+            T("Для артистов", style = Type.h2)
+            Spacer(Modifier.height(6.dp))
+            T("Загружайте свою музыку, ведите страницу и пишите анонсам подписчикам.", style = Type.body, color = Ink.mute)
+            Spacer(Modifier.height(14.dp))
+            PillButton("Кабинет артиста", { g.nav.open(Overlay.Cabinet) }, primary = false)
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Card {
+            T("Помощь", style = Type.h2)
+            Spacer(Modifier.height(6.dp))
+            T("Ответы на частые вопросы и связь с командой Blink.", style = Type.body, color = Ink.mute)
+            Spacer(Modifier.height(14.dp))
+            PillButton("Открыть помощь", { g.nav.open(Overlay.Support) }, primary = false)
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Card {
             T("Вместе", style = Type.h2)
             Spacer(Modifier.height(6.dp))
             T("Комната, где музыка одна на всех, и друзья, которые видят, что вы слушаете.", style = Type.body, color = Ink.mute)

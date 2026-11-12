@@ -29,6 +29,10 @@ import app.blink.core.wave.LibraryStore
 import app.blink.core.library.ArtistApi
 import app.blink.core.library.DeepLink
 import app.blink.core.library.Importer
+import app.blink.core.library.CabinetApi
+import app.blink.core.library.LastfmApi
+import app.blink.core.library.PostsApi
+import app.blink.core.library.SupportApi
 import app.blink.core.library.SharedApi
 import app.blink.core.library.SharedTrack
 import app.blink.core.model.Track
@@ -100,9 +104,15 @@ class Graph(val app: Application) {
     val plusApi = PlusApi(http, config, auth, PrefsKeyValue(prefs))
     val artists = ArtistApi(http, config, auth, api, { auth.session.value?.userId })
     val importer = Importer(http, config, api)
+    val posts = PostsApi(http, config, auth, api, { auth.session.value?.userId })
+    val support = SupportApi(http, config, auth)
+    val cabinet = CabinetApi(http, config, auth)
+    val lastfm = LastfmApi(http, config)
     val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
     /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
     val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)
+    /** Трек, для которого открыто окно «О треке» (похожее, комментарии). */
+    val infoTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)
     private val presence = PresenceBeat(http, config, PrefsKeyValue(prefs), scope)
 
     // Вспышка и лайки: состояние на устройстве, лайки и история синхронизируются с аккаунтом.
