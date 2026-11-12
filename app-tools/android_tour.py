@@ -18,7 +18,7 @@ report = []
 
 def adb(*args, check=False, capture=False, timeout=60):
     try:
-        r = subprocess.run(["adb", *args], capture_output=True, text=not capture, timeout=timeout)
+        r = subprocess.run(["adb", *args], capture_output=True, timeout=timeout, **({} if capture else {"encoding": "utf-8", "errors": "replace"}))
     except subprocess.TimeoutExpired:
         print(f"adb {' '.join(args)}: нет ответа за {timeout} с", flush=True)
         r = subprocess.CompletedProcess(args, 124, b"" if capture else "", b"" if capture else "")

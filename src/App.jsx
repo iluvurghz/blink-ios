@@ -22,7 +22,7 @@ import { playTrack, toggle, next, prev, seek, playNext, addToQueue, removeFromQu
 import { clock } from './lib/store.js';
 import { paletteFor, DEFAULT_PALETTE, WINTER_PALETTE } from './lib/color.js';
 import { checkKey, lookupTracks } from './lib/api.js';
-import { isDesktop, isPc, signIn, signUp, signInGoogle, signInGoogleToken, signInTelegramUser, signInTelegramDesktop, signOut, fetchStats, reloadUser, fetchShared, listDevices, revokeDevice } from './lib/cloud.js';
+import { isDesktop, isPc, isPhoneApp, signIn, signUp, signInGoogle, signInGoogleToken, signInTelegramUser, signInTelegramDesktop, signOut, fetchStats, reloadUser, fetchShared, listDevices, revokeDevice } from './lib/cloud.js';
 import { uploadAvatar, saveName as saveNickname } from './lib/catalog.js';
 import { plural, Cover, Switch } from './ui/common.jsx';
 import StoryCard, { openStory } from './ui/StoryCard.jsx';
@@ -1605,8 +1605,13 @@ function ParamsPage() {
           </div>
         </>
       )}
-      <div className="label set-label">Игры</div>
-      <GameTab on={!!s.game} />
+      {/* Game mode is a small window over a PC game: not for a phone. */}
+      {!isPhoneApp && (
+        <>
+          <div className="label set-label">Игры</div>
+          <GameTab on={!!s.game} />
+        </>
+      )}
     </div>
   );
 }
