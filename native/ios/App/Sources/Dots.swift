@@ -192,11 +192,13 @@ struct DotObject<Cover: View>: View {
     var body: some View {
         let lit = phase != .rest
         ZStack {
+            // холст шире «Точки» на 48 с каждой стороны: тень и свечение не обрезаются
             Canvas { ctx, _ in
                 _ = frame
+                ctx.translateBy(x: 48, y: 48)
                 if let g = lattice { drawDots(&ctx, g, clock, accent) }
             }
-            .frame(width: size, height: size)
+            .frame(width: size + 96, height: size + 96)
             .allowsHitTesting(false)
             if revealed {
                 cover()
@@ -262,6 +264,11 @@ private func drawDots(_ ctx: inout GraphicsContext, _ g: Lattice, _ c: DotClock,
     if c.mode == .cover && c.cleared { return }
     let p = g.p
     let s = g.s
+    // под точками мягкая тень: на сайте фон тёмный, а здесь под «Точкой» светится аура того же цвета
+    ctx.fill(
+        circle(s / 2, s / 2, s * 0.78),
+        with: .radialGradient(Gradient(colors: [Color(hex: 0x0B0A0D).opacity(0.55), Color(hex: 0x0B0A0D).opacity(0)]), center: CGPoint(x: s / 2, y: s / 2), startRadius: 0, endRadius: s * 0.78)
+    )
     func icon(_ scale: Double, _ heat: Double, _ glow: Double, _ alpha: Double) {
         let center = CGPoint(x: s / 2, y: s / 2)
         ctx.fill(
@@ -271,7 +278,7 @@ private func drawDots(_ ctx: inout GraphicsContext, _ g: Lattice, _ c: DotClock,
         for k in g.xs.indices where g.icon[k] {
             let shimmer = 0.5 + 0.5 * sin(c.t * 2.6 - g.ph[k] * 3.4)
             let r = p * (0.4 + 0.05 * shimmer) * scale
-            ctx.fill(circle(g.xs[k], g.ys[k], r), with: .color(accent.mix(.hot, clamp01(0.16 * shimmer + heat)).color(0.96 * alpha)))
+            ctx.fill(circle(g.xs[k], g.ys[k], r), with: .color(accent.mix(.hot, clamp01(0.3 + 0.16 * shimmer + heat)).color(0.96 * alpha)))
         }
     }
     switch c.mode {

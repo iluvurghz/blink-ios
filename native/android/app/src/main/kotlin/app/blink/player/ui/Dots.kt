@@ -320,6 +320,8 @@ private fun DrawScope.drawDots(g: Lattice, c: DotClock, accent: Color) {
     val p = g.p
     val s = g.s
     val center = Offset(s / 2, s / 2)
+    // под точками мягкая тень: на сайте фон тёмный, а здесь под «Точкой» светится аура того же цвета
+    drawCircle(Brush.radialGradient(listOf(Color(0x8C0B0A0D), Color(0x000B0A0D)), center, s * 0.78f), s * 0.78f, center)
     fun icon(scale: Float, heat: Float, glow: Float, alpha: Float) {
         drawCircle(
             Brush.radialGradient(listOf(accent.copy(alpha = (0.2f * glow).coerceAtMost(1f) * alpha), accent.copy(alpha = 0f)), center, s * 0.34f),
@@ -330,7 +332,7 @@ private fun DrawScope.drawDots(g: Lattice, c: DotClock, accent: Color) {
             if (!g.icon[k]) continue
             val shimmer = 0.5f + 0.5f * sin(c.t * 2.6f - g.ph[k] * 3.4f)
             val r = p * (0.4f + 0.05f * shimmer) * scale
-            drawCircle(lerp(accent, HOT, clamp01(0.16f * shimmer + heat)).copy(alpha = 0.96f * alpha), r, Offset(g.xs[k], g.ys[k]))
+            drawCircle(lerp(accent, HOT, clamp01(0.3f + 0.16f * shimmer + heat)).copy(alpha = 0.96f * alpha), r, Offset(g.xs[k], g.ys[k]))
         }
     }
     when (c.mode) {
