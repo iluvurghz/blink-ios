@@ -51,6 +51,7 @@ fun LibraryScreen(g: Graph) {
         is LibRoute.Mine -> remember(lib, r.id) { g.library.playlist(r.id)?.name ?: "Плейлист" }
         is LibRoute.Shared -> "Плейлист по ссылке"
         is LibRoute.Editorial -> "Подборка Blink"
+        LibRoute.Import -> "Перенос музыки"
     }
     Sheet(g, title) {
         when (val r = route) {
@@ -59,6 +60,7 @@ fun LibraryScreen(g: Graph) {
             is LibRoute.Mine -> MyPlaylist(g, r.id)
             is LibRoute.Shared -> RemotePlaylist(g, key = "s" + r.code, load = { g.shared.fetchShared(r.code) }, mine = false)
             is LibRoute.Editorial -> RemotePlaylist(g, key = "e" + r.id, load = { g.shared.editorialOne(r.id) }, mine = false)
+            LibRoute.Import -> ImportPanel(g)
         }
     }
 }
@@ -81,6 +83,18 @@ private fun LibraryHome(g: Graph) {
         Column(Modifier.weight(1f)) {
             T("Любимое", style = Type.title)
             T(Format.tracks(likes.size), style = Type.small, color = Ink.mute)
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Ink.ink2).tap { g.nav.libraryTo(LibRoute.Import) }.padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Glyph(Glyphs.Download, color = Ink.accent, dp = 26.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            T("Перенос музыки", style = Type.title)
+            T("Из Яндекс Музыки, Spotify или списка", style = Type.small, color = Ink.mute)
         }
     }
     Spacer(Modifier.height(18.dp))
@@ -350,6 +364,103 @@ fun ArtistScreen(g: Graph) {
                 Spacer(Modifier.height(14.dp))
                 TrackList(g, p.tracks, emptyText = "Пока нет треков.", onRemove = null)
             }
+        }
+    }
+}
+
+
+/** Перенос музыки: ссылка, CSV или список «Артист — Название» в «Любимое» или в новый плейлист. */
+@Composable
+private fun ImportPanel(g: Graph) {
+    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var text by remember { mutableStateOf("") }
+    var toLikes by remember { mutableStateOf(true) }
+    var progress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var reading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var result by remember { mutableStateOf<app.blink.core.library.ImportRun?>(null) }
+    var resultToLikes by remember { mutableStateOf(true) }
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching { ctx.contentResolver.openInputStream(uri)?.use { text = it.readBytes().toString(Charsets.UTF_8) } }
+    }
+    val r = result
+    if (r != null) {
+        T("Готово", style = Type.h1)
+        Spacer(Modifier.height(8.dp))
+        T("Перенесено ${Format.tracks(r.found.size)} из ${r.total} " + if (resultToLikes) "в «Любимое»." else "в плейлист «${r.title}».", style = Type.body, color = Ink.mute)
+        if (r.missed.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            T("НЕ НАШЛИСЬ (${r.missed.size})", style = Type.label, color = Ink.faint)
+            Spacer(Modifier.height(6.dp))
+            for (m in r.missed.take(50)) T((if (m.artist.isNotEmpty()) m.artist + " — " else "") + m.title, style = Type.small, color = Ink.mute, maxLines = 1)
+        }
+        Spacer(Modifier.height(16.dp))
+        PillButton("Отлично", { result = null; text = ""; g.nav.libraryTo(LibRoute.Home) })
+        return
+    }
+    T("Скопируйте ссылку на плейлист или альбом (Яндекс Музыка, Spotify), загрузите CSV из TuneMyMusic или вставьте список: по треку в строке, «Артист — Название». Плейлист должен быть публичным.", style = Type.body, color = Ink.mute)
+    Spacer(Modifier.height(12.dp))
+    androidx.compose.foundation.text.BasicTextField(
+        value = text,
+        onValueChange = { text = it },
+        textStyle = Type.body.copy(color = Ink.bone),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.accent),
+        modifier = Modifier.fillMaxWidth().height(160.dp),
+        decorationBox = { inner ->
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(Ink.ink2).padding(16.dp)) {
+                if (text.isEmpty()) T("https://music.yandex.ru/users/…/playlists/…\n\nили списком:\nMiyagi & Andy Panda — Kosandra", style = Type.body, color = Ink.faint)
+                inner()
+            }
+        },
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        PillButton("Выбрать файл", { picker.launch(arrayOf("text/*", "application/vnd.ms-excel", "application/octet-stream")) }, primary = false)
+        Chip("В «Любимое»", active = toLikes) { toLikes = true }
+        Chip("В новый плейлист", active = !toLikes) { toLikes = false }
+    }
+    Spacer(Modifier.height(14.dp))
+    val p = progress
+    if (reading || p != null) {
+        T(if (reading) "Читаю плейлист…" else "Ищу треки… ${p?.first} из ${p?.second}", style = Type.small, color = Ink.mute)
+        Spacer(Modifier.height(6.dp))
+        BarProgress(if (reading || p == null || p.second == 0) 0f else p.first.toFloat() / p.second)
+    } else {
+        val src = app.blink.core.library.Importer.sourceOf(text)
+        PillButton(if (src != null) "Перенести из ${src.title}" else "Перенести", {
+            if (g.auth.session.value == null) {
+                g.toasts.show("Войдите, чтобы переносить музыку")
+                g.nav.go(app.blink.player.Tab.Account)
+                return@PillButton
+            }
+            error = null
+            reading = src != null
+            val saveToLikes = toLikes
+            scope.launch {
+                try {
+                    val run = g.importer.run(text) { d, t ->
+                        reading = false
+                        progress = d to t
+                    }
+                    if (saveToLikes) g.library.addLikes(run.found) else g.library.createPlaylist(run.title, run.found)
+                    resultToLikes = saveToLikes
+                    result = run
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: app.blink.core.library.ImportException) {
+                    error = e.message
+                } catch (_: Exception) {
+                    error = "Не получилось, попробуйте ещё раз"
+                } finally {
+                    reading = false
+                    progress = null
+                }
+            }
+        }, enabled = text.isNotBlank())
+        error?.let {
+            Spacer(Modifier.height(8.dp))
+            T(it, style = Type.small, color = Ink.danger)
         }
     }
 }

@@ -16,6 +16,7 @@ sealed interface LibRoute {
     data class Mine(val id: String) : LibRoute
     data class Shared(val code: String) : LibRoute
     data class Editorial(val id: String) : LibRoute
+    data object Import : LibRoute
 }
 
 /** Куда смотрит приложение. Живёт в Graph, чтобы тосты и сервисы могли переключать экраны. */

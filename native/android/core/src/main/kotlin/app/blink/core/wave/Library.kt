@@ -99,6 +99,17 @@ class LibraryStore(private val blob: BlobStore) : Library {
         }
     }
 
+    /** Добавляет в «Любимое» треки, которых там ещё нет (перенос музыки). Возвращает, сколько добавилось. */
+    @Synchronized
+    fun addLikes(tracks: List<Track>): Int {
+        val cur = flow.value
+        val have = cur.likes.mapNotNull { it.str("id") }.toHashSet()
+        val fresh = tracks.filter { have.add(it.id) }
+        if (fresh.isEmpty()) return 0
+        commit(cur.copy(likes = fresh.map(::raw) + cur.likes))
+        return fresh.size
+    }
+
     /** Трек начал играть: наверх истории, без дублей, до 60. */
     @Synchronized
     fun noteRecent(track: Track) {
