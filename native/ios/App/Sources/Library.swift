@@ -14,7 +14,7 @@ struct LibraryOverlay: View {
     private var title: String {
         switch route {
         case .home: return "Музыка"
-        case .likes: return "Любимое"
+        case .likes: return "Мне нравится"
         case .mine(let id): return graph.library.playlist(id)?.name ?? "Плейлист"
         case .shared: return "Плейлист по ссылке"
         case .editorial: return "Подборка Blink"

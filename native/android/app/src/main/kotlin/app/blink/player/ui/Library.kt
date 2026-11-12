@@ -53,7 +53,7 @@ fun LibraryScreen(g: Graph) {
     BackHandler { if (route == LibRoute.Home) g.nav.close() else g.nav.libraryTo(LibRoute.Home) }
     val title = when (val r = route) {
         LibRoute.Home -> "Музыка"
-        LibRoute.Likes -> "Любимое"
+        LibRoute.Likes -> "Мне нравится"
         is LibRoute.Mine -> remember(lib, r.id) { g.library.playlist(r.id)?.name ?: "Плейлист" }
         is LibRoute.Shared -> "Плейлист по ссылке"
         is LibRoute.Editorial -> "Подборка Blink"
