@@ -118,9 +118,14 @@ jobs:
             xcrun simctl io "$udid" screenshot --type=png "shots/ios/$1.png" || true
             if alive; then echo "$1: ok" | tee -a shots/ios/report.txt; else echo "$1: ПРИЛОЖЕНИЯ НЕТ" | tee -a shots/ios/report.txt; fi
           }
-          view() { xcrun simctl openurl "$udid" "$2"; sleep "$3"; shot "$1"; }
+          # Раздел открываем ссылкой при запуске (см. SceneDelegate.swift): openurl упирается в окно «Open in Blink?».
+          view() {
+            xcrun simctl terminate "$udid" "$id" 2>/dev/null || true
+            SIMCTL_CHILD_BLINK_OPEN="$2" xcrun simctl launch "$udid" "$id"
+            sleep "$(( $3 + 6 ))"; shot "$1"
+          }
           xcrun simctl launch "$udid" "$id"
-          sleep 1.2; shot 00-intro
+          sleep 2.5; shot 00-intro
           sleep 11; shot 01-home
           view 02-search "blink://view/search?q=%D0%A1%D0%BA%D1%80%D0%B8%D0%BF%D1%82%D0%BE%D0%BD%D0%B8%D1%82" 9
           view 03-charts "blink://view/charts" 8
@@ -152,7 +157,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(shots/ios/*)
+          files=()
+          for f in shots/ios/*; do [ -s "$f" ] && files+=("$f"); done
           [ "${#files[@]}" -gt 0 ] || exit 0
           gh release delete app-ios-screens --cleanup-tag --yes || true
           gh release create app-ios-screens "${files[@]}" --prerelease --target "$GITHUB_SHA" \

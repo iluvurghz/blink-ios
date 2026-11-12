@@ -16,8 +16,12 @@ OUT.mkdir(parents=True, exist_ok=True)
 report = []
 
 
-def adb(*args, check=False, capture=False):
-    r = subprocess.run(["adb", *args], capture_output=True, text=not capture)
+def adb(*args, check=False, capture=False, timeout=60):
+    try:
+        r = subprocess.run(["adb", *args], capture_output=True, text=not capture, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"adb {' '.join(args)}: нет ответа за {timeout} с", flush=True)
+        r = subprocess.CompletedProcess(args, 124, b"" if capture else "", b"" if capture else "")
     if check and r.returncode != 0:
         print(r.stdout, r.stderr)
         sys.exit(f"adb {' '.join(args)} failed")
@@ -26,8 +30,12 @@ def adb(*args, check=False, capture=False):
 
 def shot(name):
     png = adb("exec-out", "screencap", "-p", capture=True).stdout
-    (OUT / f"{name}.png").write_bytes(png)
+    if png:
+        (OUT / f"{name}.png").write_bytes(png)
     alive = bool(adb("shell", "pidof", PKG).stdout.strip())
+    # Журнал после каждого шага: если приложение или эмулятор упадут, причина останется.
+    log = adb("logcat", "-d", "-v", "time", "Capacitor:V", "Capacitor/Console:V", "chromium:V", "AndroidRuntime:E", "ActivityManager:I", "lowmemorykiller:V", "*:F", "*:S").stdout
+    (OUT / "logcat.txt").write_text(log or "")
     report.append(f"{name}: {'ok' if alive else 'ПРИЛОЖЕНИЯ НЕТ'}")
     print(report[-1], flush=True)
     return alive

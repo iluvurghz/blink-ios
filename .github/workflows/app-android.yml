@@ -107,6 +107,9 @@ jobs:
           target: google_apis
           profile: pixel_7
           disable-animations: true
+          cores: 4
+          ram-size: 4096M
+          heap-size: 576M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: python3 app-tools/android_tour.py apk/${{ needs.apk.outputs.name }}
       - uses: actions/upload-artifact@v4
@@ -122,7 +125,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(shots/android/*)
+          files=()
+          for f in shots/android/*; do [ -s "$f" ] && files+=("$f"); done
           [ "${#files[@]}" -gt 0 ] || exit 0
           gh release delete app-android-screens --cleanup-tag --yes || true
           gh release create app-android-screens "${files[@]}" --prerelease --target "$GITHUB_SHA" \
