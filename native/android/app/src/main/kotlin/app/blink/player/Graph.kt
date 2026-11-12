@@ -26,7 +26,9 @@ import app.blink.core.social.RoomSession
 import app.blink.player.playback.RoomPort
 import kotlinx.coroutines.delay
 import app.blink.core.wave.LibraryStore
+import app.blink.core.library.ArtistApi
 import app.blink.core.library.DeepLink
+import app.blink.core.library.Importer
 import app.blink.core.library.SharedApi
 import app.blink.core.library.SharedTrack
 import app.blink.core.model.Track
@@ -96,8 +98,8 @@ class Graph(val app: Application) {
     val room = RoomSession(RoomApi(http, config, auth), scope, RoomPort(player), { auth.session.value?.userId }, { toasts.show(it) })
     val friends = FriendsModel(FriendsApi(http, config, auth), scope) { toasts.show(it) }
     val plusApi = PlusApi(http, config, auth, PrefsKeyValue(prefs))
-    val artists = app.blink.core.library.ArtistApi(http, config, auth, api, { auth.session.value?.userId })
-    val importer = app.blink.core.library.Importer(http, config, api)
+    val artists = ArtistApi(http, config, auth, api, { auth.session.value?.userId })
+    val importer = Importer(http, config, api)
     val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
     /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
     val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)
