@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import app.blink.player.ui.StageModel
 
 /**
  * Всё, что живёт, пока жив процесс: сеть, вход, офлайн-менеджер, плеер. Собрано руками без DI-библиотек:
@@ -108,7 +109,7 @@ class Graph(val app: Application) {
     val support = SupportApi(http, config, auth)
     val cabinet = CabinetApi(http, config, auth)
     val lastfm = LastfmApi(http, config)
-    val stage = app.blink.player.ui.StageModel(http, config, auth, prefs, scope)
+    val stage = StageModel(http, config, auth, prefs, scope)
     val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
     /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
     val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)

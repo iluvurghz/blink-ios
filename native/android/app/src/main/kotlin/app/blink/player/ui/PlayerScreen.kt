@@ -84,6 +84,7 @@ import app.blink.player.playback.PlayerUi
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import androidx.compose.ui.composed
 
 internal enum class StageTab { Cover, Lyrics, Queue, Comments }
 
@@ -381,7 +382,7 @@ fun StageIcon(
 }
 
 /** Тап с лёгким сжатием, как :active { scale: .92 } на сайте. */
-fun Modifier.pressTap(enabled: Boolean = true, onClick: () -> Unit): Modifier = androidx.compose.ui.composed {
+fun Modifier.pressTap(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
     var pressed by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (pressed) 0.92f else 1f, tween(140), label = "press")
     this
