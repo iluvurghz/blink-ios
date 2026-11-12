@@ -21,7 +21,7 @@ struct FlashView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                FlashHero(top: geo.safeAreaInsets.top, bottom: Chrome.dock + Chrome.gap * 2 + 14)
+                FlashHero(top: geo.safeAreaInsets.top, bottom: Chrome.dock + Chrome.gap * 2 + 18 + geo.safeAreaInsets.bottom)
                     .frame(height: geo.size.height + geo.safeAreaInsets.top)
                 HStack(alignment: .lastTextBaseline) {
                     T("Коллекция", .h1)
@@ -86,6 +86,13 @@ struct FlashView: View {
         }
         }
         .ignoresSafeArea(edges: .top)
+        .overlay(alignment: .top) {
+            // под часами и значками строки состояния, когда главная прокручена вниз
+            LinearGradient(colors: [Color(hex: 0x0B0A0D), Color(hex: 0x0B0A0D).opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: geo.safeAreaInsets.top + 10)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        }
         }
     }
 

@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -74,6 +76,7 @@ fun FlashScreen(g: Graph) {
     val artists = remember(liked) { favouriteArtists(liked) }
     val track = player.track
 
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 190.dp),
@@ -139,6 +142,12 @@ fun FlashScreen(g: Graph) {
             }
         }
     }
+    // под строкой состояния, когда главная прокручена вниз
+    Box(
+        Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFF0B0A0D), Color(0x000B0A0D))))
+            .windowInsetsTopHeight(androidx.compose.foundation.layout.WindowInsets.statusBars),
+    )
+    }
 }
 
 /** Артисты из лайков: у кого больше всего понравившихся треков. */
@@ -169,7 +178,7 @@ fun FlashAura(palette: app.blink.core.ui.Palette, energy: Float, modifier: Modif
         val start = androidx.compose.runtime.withFrameNanos { it }
         while (true) {
             androidx.compose.runtime.withFrameNanos { now -> t = (now - start) / 1e9f }
-            kotlinx.coroutines.delay(30)
+            kotlinx.coroutines.delay(45)
         }
     }
     Canvas(modifier.fillMaxSize()) {
