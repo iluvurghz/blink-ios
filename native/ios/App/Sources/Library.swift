@@ -483,7 +483,7 @@ private struct ImportPanel: View {
     @State private var toLikes = true
     @State private var reading = false
     @State private var progress: (Int, Int)? = nil
-    @State private var error: String? = nil
+    @State private var failure: String? = nil
     @State private var result: ImportRun? = nil
     @State private var resultToLikes = true
     @State private var picking = false
@@ -532,7 +532,7 @@ private struct ImportPanel: View {
                 let src = Importer.sourceOf(text)
                 PillButton(src.map { "Перенести из " + $0.title } ?? "Перенести", enabled: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { start(src != nil) }
                     .padding(.top, 14)
-                if let e = error {
+                if let e = failure {
                     T(e, .small, color: Ink.danger)
                         .padding(.top, 8)
                 }
@@ -553,7 +553,7 @@ private struct ImportPanel: View {
             graph.nav.go(.account)
             return
         }
-        error = nil
+        failure = nil
         reading = isLink
         let saveToLikes = toLikes
         let input = text
@@ -569,9 +569,9 @@ private struct ImportPanel: View {
                 resultToLikes = saveToLikes
                 result = run
             } catch let e as ImportError {
-                error = e.message
+                failure = e.message
             } catch {
-                error = "Не получилось, попробуйте ещё раз"
+                failure = "Не получилось, попробуйте ещё раз"
             }
             reading = false
             progress = nil
