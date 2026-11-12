@@ -181,8 +181,9 @@ struct FlashAura: View {
     }
 }
 
-/// Главный экран Вспышки на всю высоту, как «Моя волна», но в стиле Blink: живой свет цветов обложки,
-/// большое «Вспышка.», светящаяся кнопка. Когда играет: артист крупно, обложка, пауза, плашка трека и сердце.
+/// Главный экран Вспышки на всю высоту, как на сайте (FlashHome.jsx) поверх живого света: сверху плашка «Играет …»
+/// с крестиком, в середине «Точка» из точек (нажать: вспыхивает и собирается в обложку), под ней «Вспышка.» с подсказкой,
+/// а когда играет: название, ход трека точками, кнопки сайта и режимы словами с точкой под выбранным.
 private struct FlashHero: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var flash: FlashController
@@ -192,235 +193,232 @@ private struct FlashHero: View {
     let top: CGFloat
     let bottom: CGFloat
     @State private var dx: CGFloat = 0
+    @State private var startId: String?
 
     var body: some View {
         let ui = player.value
         let p = stage.palette
         let accent = p.accent.color
+        let rgb = RGB(p.accent)
         let ink = p.accentInk.color
-        let flashing = flash.active && ui.track != nil
-        return ZStack {
-            Color(hex: 0x0B0A0D)
-            FlashAura(palette: p, energy: ui.playing ? 1 : 0.35, paused: !active)
-            VStack(spacing: 0) {
-                header(flashing: flashing, accent: accent, ink: ink)
-                    .frame(height: 48)
-                Spacer(minLength: 8)
-                if flashing, let t = ui.track {
-                    playing(t, ui: ui, accent: accent)
-                } else {
-                    rest(ui.track, accent: accent, ink: ink)
+        let track = ui.track
+        // Вспышка «горит», когда заиграл её трек; до того (и если до нажатия играло своё) точки разгораются
+        let phase: DotPhase = {
+            if flash.active, let t = track, t.id != startId || !flash.loading { return .flash }
+            if flash.active || flash.loading { return .igniting }
+            return .rest
+        }()
+        let flashing = phase == .flash && track != nil
+        return GeometryReader { geo in
+            let w = geo.size.width
+            let screenH = geo.size.height
+            let side = max(120, min(max(176, screenH - 540), min(318, w - 44)))
+            ZStack {
+                Color(hex: 0x0B0A0D)
+                FlashAura(palette: p, energy: ui.playing ? 1 : 0.35, paused: !active)
+                VStack(spacing: 0) {
+                    header(track, flashing: flashing, playing: ui.playing, accent: accent)
+                        .frame(height: 48)
+                    Spacer(minLength: 8)
+                    DotObject(phase: phase, accent: rgb, photo: track?.artwork, size: side, paused: !active) {
+                        if let t = track { NetImage(url: ArtUrl.scaled(t.artwork, 600)) }
+                    }
+                    .offset(x: dx * 0.3)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if flashing { graph.nav.openPlayer(true) } else if phase == .rest { flash.start() }
+                    }
+                    .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { v in
+                        if flashing { dx = v.translation.width }
+                    }.onEnded { v in
+                        if flashing {
+                            if v.translation.width < -120 { graph.player.next() } else if v.translation.width > 120 { graph.player.previous() }
+                        }
+                        withAnimation(.easeOut(duration: 0.2)) { dx = 0 }
+                    })
+                    .accessibilityElement()
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(flashing ? "Открыть плеер" : "Включить Вспышку")
+                    .accessibilityAction { if flashing { graph.nav.openPlayer(true) } else { flash.start() } }
+                    .padding(.bottom, 22)
+                    if flashing, let t = track {
+                        playing(t, ui: ui, w: w, rgb: rgb, accent: accent, ink: ink)
+                    } else {
+                        rest(w: w, igniting: phase == .igniting, accent: accent)
+                    }
+                    Spacer(minLength: 8)
+                    ModeWords(mode: flash.mode, accent: accent) { m in
+                        flash.setMode(m)
+                        if !flash.active && !flash.loading { flash.start() }
+                    }
                 }
-                Spacer(minLength: 8)
-                ModeBubbles(palette: p, mode: flash.mode) { m in
-                    flash.setMode(m)
-                    if !flash.active && !flash.loading { flash.start() }
-                }
+                .padding(.top, top + 10)
+                .padding(.bottom, bottom)
             }
-            .padding(.top, top + 10)
-            .padding(.bottom, bottom)
         }
+        .onChange(of: flash.active) { _, on in startId = on ? graph.player.current.track?.id : nil }
     }
 
     @ViewBuilder
-    private func header(flashing: Bool, accent: Color, ink: Color) -> some View {
-        if flashing {
-            HStack(spacing: 8) {
-                T("Вспышка · " + flash.mode.title, BType.button.sized(15), color: accent, lines: 1)
-                Button { flash.stop() } label: {
-                    LineIconView(.close, color: ink, size: 16, stroke: 2.4)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(accent))
+    private func header(_ track: Track?, flashing: Bool, playing: Bool, accent: Color) -> some View {
+        if let t = track {
+            let ours = flashing || flash.active
+            HomePill(
+                big: flashing,
+                on: playing,
+                title: ours ? "Играет Вспышка" : "Играет ваша музыка",
+                sub: ours ? flash.mode.title : "\(t.title) · \(t.artist)",
+                accent: accent,
+                open: { graph.nav.openPlayer(true) },
+                close: {
+                    flash.stop()
+                    graph.player.stop()
                 }
-                .buttonStyle(PressScale())
-                .accessibilityLabel("Остановить Вспышку")
-            }
-            .padding(.leading, 18)
-            .padding(.trailing, 5)
-            .frame(height: 44)
-            .background(Capsule().fill(Color.black.opacity(0.25)))
-            .overlay(Capsule().stroke(Color.white.opacity(0.11), lineWidth: 1))
+            )
         } else {
             HStack(alignment: .lastTextBaseline, spacing: 2) {
-                T("blink", BType.h2.sized(20, tracking: -0.6))
+                T("blink", BType.h2.sized(20, tracking: -0.8))
                 Circle().fill(accent).frame(width: 6, height: 6)
             }
         }
     }
 
-    private func rest(_ track: Track?, accent: Color, ink: Color) -> some View {
+    private func rest(w: CGFloat, igniting: Bool, accent: Color) -> some View {
         let hint: String = {
             let names = FlashView.favouriteArtists(flash.likes).prefix(3).map { $0.name }
             return names.isEmpty ? "Слушайте и ставьте лайки, и поток подстроится под вас" : names.joined(separator: ", ") + " и похожее на них"
         }()
+        let hero = min(58, max(40, w * 0.15))
         return VStack(spacing: 0) {
-            HStack(alignment: .lastTextBaseline, spacing: 4) {
-                T("Вспышка", BType.display.sized(56, tracking: -3), lines: 1)
-                Circle().fill(accent).frame(width: 10, height: 10)
+            T("ВАШ ЛИЧНЫЙ ПОТОК", BType(name: "Manrope-Bold", size: 12, line: 16, tracking: 1.9), color: Ink.bone.opacity(0.72), lines: 1)
+            HStack(alignment: .lastTextBaseline, spacing: hero * 0.06) {
+                T("Вспышка", BType.display.sized(hero, tracking: -0.055 * hero), lines: 1)
+                Circle().fill(accent).frame(width: hero * 0.18, height: hero * 0.18)
             }
-            Button { flash.start() } label: {
-                ZStack {
-                    Circle().fill(accent).frame(width: 112, height: 112)
-                        .shadow(color: accent.opacity(0.65), radius: 36)
-                    if flash.loading {
-                        Spinner(color: ink, size: 48)
-                    } else {
-                        LineIconView(.play, color: ink, size: 46, stroke: 2.2)
-                    }
-                }
-            }
-            .buttonStyle(PressScale())
-            .disabled(flash.loading)
-            .accessibilityLabel("Включить Вспышку")
-            .padding(.top, 26)
-            if let t = track {
-                let liked = flash.isLiked(t)
-                HStack(spacing: 0) {
-                    Button { graph.nav.openPlayer(true) } label: {
-                        T("\(t.artist) — \(t.title)", BType.title.sized(16), lines: 1, align: .center)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(TapStyle())
-                    StageIcon(liked ? .heartFill : .heart, "Любимое", size: 24, box: 48, on: liked) { flash.toggleLike(t) }
-                }
-                .padding(.leading, 22)
-                .padding(.trailing, 6)
-                .frame(height: 60)
-                .background(Capsule().fill(Color.black.opacity(0.25)))
-                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                .padding(.horizontal, 24)
-                .padding(.top, 26)
-            }
-            T(flash.loading ? "Подбираю музыку…" : hint, BType.body.sized(16), color: Ink.bone.opacity(0.85), lines: 2, align: .center)
+            .padding(.top, 10)
+            T(igniting ? "Подбираю музыку…" : hint, BType(name: "Manrope-Bold", size: 16, line: 21, tracking: 0), lines: 2, align: .center)
+                .frame(minHeight: 42, alignment: .top)
                 .padding(.horizontal, 36)
-                .padding(.top, track == nil ? 26 : 18)
+                .padding(.top, 12)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func playing(_ t: Track, ui: PlayerUi, accent: Color) -> some View {
+    private func playing(_ t: Track, ui: PlayerUi, w: CGFloat, rgb: RGB, accent: Color, ink: Color) -> some View {
         let liked = flash.isLiked(t)
-        let fraction = ui.durationMs > 0 ? min(1, max(0, Double(ui.positionMs) / Double(ui.durationMs))) : 0
+        let title = min(30, max(22, w * 0.068))
         return VStack(spacing: 0) {
-            T(t.artist, BType.display.sized(40, tracking: -1.8), lines: 2, align: .center)
-                .padding(.horizontal, 20)
-            Button { graph.nav.openPlayer(true) } label: {
-                NetImage(url: ArtUrl.scaled(t.artwork, 400))
-                    .frame(width: 148, height: 148)
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .shadow(color: accent.opacity(0.5), radius: 30)
+            T(t.title, BType.display.sized(title, tracking: -0.045 * title), lines: 2, align: .center)
+                .padding(.horizontal, 28)
+            T(t.artist, BType(name: "Manrope-SemiBold", size: 16, line: 21, tracking: 0), color: Ink.bone.opacity(0.62), lines: 1, align: .center)
+                .padding(.horizontal, 28)
+                .padding(.top, 7)
+            DotProgress(positionMs: ui.positionMs, durationMs: ui.durationMs, accent: rgb) { graph.player.seek(toMs: $0) }
+                .padding(.horizontal, 22)
+                .padding(.top, 14)
+            HStack(spacing: 0) {
+                BareButton(icon: .thumbDown, label: "Не моё", iconSize: 22) { flash.dislike(t) }
+                Spacer(minLength: 0)
+                BareButton(icon: .prev, label: "Назад", iconSize: 24) { graph.player.previous() }
+                Spacer(minLength: 0)
+                IrisButton(playing: ui.playing, buffering: ui.buffering, accent: rgb, ink: ink) { graph.player.toggle() }
+                Spacer(minLength: 0)
+                BareButton(icon: .next, label: "Дальше", iconSize: 24) { graph.player.next() }
+                Spacer(minLength: 0)
+                BareButton(icon: liked ? .heartFill : .heart, label: "Любимое", iconSize: 22, on: liked, accent: accent) { flash.toggleLike(t) }
             }
-            .buttonStyle(PressScale())
-            .offset(x: dx * 0.35)
-            .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { dx = $0.translation.width }.onEnded { v in
-                if v.translation.width < -90 { graph.player.next() } else if v.translation.width > 90 { graph.player.previous() }
-                withAnimation(.easeOut(duration: 0.2)) { dx = 0 }
-            })
-            .accessibilityLabel("Открыть плеер")
-            .padding(.top, 26)
-            HStack(spacing: 8) {
-                RoundGlass(icon: ui.playing ? .pause : .play, label: ui.playing ? "Пауза" : "Играть") { graph.player.toggle() }
-                Button { graph.nav.openPlayer(true) } label: {
-                    T(t.title, BType.title.sized(17), lines: 1, align: .center)
-                        .padding(.horizontal, 18)
-                        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 64)
-                        .background(
-                            GeometryReader { g in
-                                ZStack(alignment: .leading) {
-                                    Color.black.opacity(0.2)
-                                    accent.opacity(0.3).frame(width: g.size.width * fraction)
-                                }
-                            }
-                        )
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                }
-                .buttonStyle(TapStyle())
-                RoundGlass(icon: liked ? .heartFill : .heart, label: "Любимое", on: liked, accent: accent) { flash.toggleLike(t) }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 26)
-            HStack(spacing: 18) {
-                QuietAction(icon: .thumbDown, label: "Не моё") { flash.dislike(t) }
-                QuietAction(icon: .next, label: "Дальше") { graph.player.next() }
-            }
+            .padding(.horizontal, 22)
             .padding(.top, 14)
         }
     }
 }
 
-private struct RoundGlass: View {
-    let icon: LineIcon
-    let label: String
-    var on: Bool = false
-    var accent: Color = Ink.accent
-    let action: () -> Void
+/// Плашка сверху, как на сайте (.hm-pill): точка Blink с кольцом (моргает, пока играет), что играет, и крестик.
+private struct HomePill: View {
+    let big: Bool
+    let on: Bool
+    let title: String
+    let sub: String
+    let accent: Color
+    let open: () -> Void
+    let close: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            LineIconView(icon, color: on ? accent : Ink.bone, size: 26)
-                .frame(width: 64, height: 64)
-                .background(Circle().fill(Color.black.opacity(0.2)))
-                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
-        }
-        .buttonStyle(PressScale())
-        .accessibilityLabel(label)
-    }
-}
-
-private struct QuietAction: View {
-    let icon: LineIcon
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                LineIconView(icon, color: Ink.bone.opacity(0.7), size: 18)
-                T(label, BType.button.sized(13), color: Ink.bone.opacity(0.7), lines: 1)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(PressScale())
-        .accessibilityLabel(label)
-    }
-}
-
-/// Режимы потока пузырями внизу экрана: у каждого свой цвет из палитры, выбранный ярче.
-private struct ModeBubbles: View {
-    let palette: Palette
-    let mode: WaveMode
-    let pick: (WaveMode) -> Void
-
-    var body: some View {
-        let hues = [palette.accent, palette.glowB, palette.glowA, palette.glowC]
-        let icons: [LineIcon] = [.bolt, .heart, .search, .plus]
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(Array(WaveMode.allCases.enumerated()), id: \.element.rawValue) { i, m in
-                    let on = m == mode
-                    let c = hues[i % hues.count].vivid(0.5).color
-                    let shape = UnevenRoundedRectangle(topLeadingRadius: 59, bottomLeadingRadius: 24, bottomTrailingRadius: 24, topTrailingRadius: 59, style: .continuous)
-                    Button { pick(m) } label: {
-                        VStack(spacing: 0) {
-                            LineIconView(icons[i % icons.count], color: Ink.bone.opacity(on ? 1 : 0.75), size: 24)
-                            Spacer(minLength: 0)
-                            T(m.title, BType.button.sized(14), color: Ink.bone.opacity(on ? 1 : 0.8), lines: 1)
+        HStack(spacing: 2) {
+            Button(action: open) {
+                HStack(spacing: 8) {
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: !on)) { tl in
+                        let ph = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4.6) / 4.6
+                        let sy: Double = !on || ph < 0.92 ? 1 : (ph < 0.96 ? 1 - 0.85 * (ph - 0.92) / 0.04 : 0.15 + 0.85 * (ph - 0.96) / 0.04)
+                        let d: CGFloat = big ? 14 : 11
+                        ZStack {
+                            Circle().fill(RadialGradient(colors: [accent.opacity(0.7), accent.opacity(0)], center: .center, startRadius: 0, endRadius: d / 2 + (big ? 22 : 16)))
+                                .frame(width: d + (big ? 44 : 32), height: d + (big ? 44 : 32))
+                            Circle().fill(accent.opacity(big ? 0.22 : 0.2)).frame(width: d + (big ? 12 : 10), height: d + (big ? 12 : 10))
+                            Circle().fill(accent).frame(width: d, height: d)
                         }
-                        .padding(.top, 24)
-                        .padding(.bottom, 14)
-                        .frame(width: 118, height: 112)
-                        .background(shape.fill(LinearGradient(colors: [c.opacity(on ? 0.95 : 0.55), c.opacity(on ? 0.35 : 0.12)], startPoint: .top, endPoint: .bottom)))
-                        .overlay(shape.stroke(Color.white.opacity(on ? 0.4 : 0.08), lineWidth: on ? 1.5 : 1))
+                        .scaleEffect(x: 1, y: sy)
                     }
-                    .buttonStyle(PressScale())
-                    .accessibilityLabel("Режим \(m.title)")
-                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        T(title, BType(name: "Manrope-Bold", size: 14, line: 17, tracking: 0), lines: 1)
+                        T(sub, BType(name: "Manrope-SemiBold", size: 12, line: 15, tracking: 0), color: Ink.bone.opacity(0.62), lines: 1)
+                            .frame(maxWidth: 200, alignment: .leading)
+                    }
                 }
+                .padding(.trailing, 8)
             }
-            .padding(.horizontal, 12)
+            .buttonStyle(TapStyle())
+            .accessibilityLabel("Открыть плеер")
+            Button(action: close) {
+                LineIconView(.close, color: Ink.bone.opacity(0.85), size: 16, stroke: 2.2)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressScale())
+            .accessibilityLabel("Остановить и закрыть")
         }
+        .padding(.leading, 6)
+        .padding(.trailing, 4)
+        .frame(height: 48)
+        .background(Capsule().fill(Ink.bone.opacity(0.075)))
+        .overlay(Capsule().stroke(Ink.bone.opacity(0.11), lineWidth: 1))
+        .padding(.horizontal, 16)
+    }
+}
+
+/// Режимы словами, как на сайте (.hm-modes): выбранный светлый, под ним точка Blink, она переезжает к новому.
+private struct ModeWords: View {
+    let mode: WaveMode
+    let accent: Color
+    let pick: (WaveMode) -> Void
+    @Namespace private var dot
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(WaveMode.allCases, id: \.rawValue) { m in
+                let on = m == mode
+                Button { pick(m) } label: {
+                    T(m.title, BType(name: "Manrope-Bold", size: 13, line: 16, tracking: 0), color: on ? Ink.bone : Ink.bone.opacity(0.55), lines: 1)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .frame(height: 38)
+                        .overlay(alignment: .bottom) {
+                            if on {
+                                Circle().fill(accent).frame(width: 5, height: 5)
+                                    .matchedGeometryEffect(id: "dot", in: dot)
+                                    .padding(.bottom, 3)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(TapStyle())
+                .accessibilityLabel("Режим \(m.title)")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mode)
+        .frame(maxWidth: .infinity)
     }
 }
 

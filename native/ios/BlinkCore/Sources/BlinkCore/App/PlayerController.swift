@@ -251,6 +251,32 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         }
     }
 
+    /// Остановить и убрать очередь: крестик на плашке главной, как на сайте.
+    public func stop() {
+        lock.lock()
+        queue = []
+        unshuffled = nil
+        index = -1
+        generation += 1
+        phase = .idle
+        wantPlay = false
+        ended = false
+        pendingSeekMs = nil
+        let task = loadTask
+        loadTask = nil
+        let shuffle = state.current.shuffle
+        let rep = repeatMode
+        lock.unlock()
+        task?.cancel()
+        audio.stop()
+        state.update {
+            var ui = PlayerUi()
+            ui.shuffle = shuffle
+            ui.repeatMode = rep
+            $0 = ui
+        }
+    }
+
     public func seek(toMs ms: Int64) {
         lock.lock()
         let ready = phase == .loaded

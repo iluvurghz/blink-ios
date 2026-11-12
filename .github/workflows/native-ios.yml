@@ -211,6 +211,8 @@ jobs:
           shot 12-collection 10 SIMCTL_CHILD_BLINK_START_TAB=flash SIMCTL_CHILD_BLINK_START_SCROLL=collection
           shot 13-likes 8 SIMCTL_CHILD_BLINK_START_LIBRARY=likes
           shot 14-flash-on 24 SIMCTL_CHILD_BLINK_START_FLASH=1
+          shot 00-intro-ring 6 SIMCTL_CHILD_BLINK_INTRO_AT=0.5
+          shot 00-intro-word 6 SIMCTL_CHILD_BLINK_INTRO_AT=1.6
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'subsystem == "app.blink.player"' > shots/blink.log 2>&1 || true
           echo "итог: приложение живо на всех шагах" | tee shots/report.txt

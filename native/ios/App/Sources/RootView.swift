@@ -21,6 +21,7 @@ struct RootView: View {
     @EnvironmentObject private var hasTrack: HasTrackStore
     @EnvironmentObject private var currentId: CurrentIdStore
     @EnvironmentObject private var stage: StageModel
+    @State private var intro = true
 
     var body: some View {
         let tab = nav.value.tab
@@ -61,6 +62,11 @@ struct RootView: View {
                 .zIndex(2)
             TrackInfoSheet()
                 .zIndex(2)
+            // заставка при запуске: «blink» из точек, как в приложении на сайте
+            if intro {
+                DotIntro(freezeAt: LaunchHooks.introAt) { intro = false }
+                    .zIndex(10)
+            }
         }
         .overlay(alignment: .bottom) {
             ToastHost(bottomPadding: playerOpen ? 96 : (tab == .flash ? Chrome.height(hasTrack: false) : chrome) + 12)

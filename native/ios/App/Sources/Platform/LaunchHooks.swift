@@ -52,6 +52,11 @@ enum LaunchHooks {
         return env["BLINK_START_SCROLL"]
     }
 
+    /// Секунда заставки, на которой её остановить (снимки экрана). Без переменной заставка идёт как обычно.
+    static var introAt: Double? {
+        return Double(env["BLINK_INTRO_AT"] ?? "")
+    }
+
     /// Вызывается один раз после старта приложения.
     static func run(search: SearchModel, actions: Actions, nav: Nav, player: PlayerController, flash: FlashController) {
         if let tab = startTab { nav.go(tab) }
