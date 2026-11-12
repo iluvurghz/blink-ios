@@ -173,7 +173,7 @@ public enum Glyphs: CaseIterable, Sendable {
     case play, pause, next, previous, download, check, close, search, person, refresh
     case cloudOff, delete, expandMore, note, checkCircle
     case bolt, heart, heartOutline, thumbDown
-    case group, share, star, send, add, queue
+    case group, share, star, send, add, queue, info
 
     public var d: String {
         switch self {
@@ -212,6 +212,8 @@ public enum Glyphs: CaseIterable, Sendable {
         case .send: return "M2.01,21L23,12 2.01,3 2,10l15,2 -15,2z"
         case .add: return "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
         case .queue: return "M15,6H3v2h12V6zM15,10H3v2h12v-2zM3,16h8v-2H3v2zM17,6v8.18c-0.31,-0.11 -0.65,-0.18 -1,-0.18 -1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3V8h3V6h-5z"
+        case .info:
+            return "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2V7h2v2z"
         case .checkCircle:
             return "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z"
         }

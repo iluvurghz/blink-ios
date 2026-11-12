@@ -38,6 +38,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.blink.core.offline.OfflinePolicy
 import app.blink.core.offline.OfflineState
 import app.blink.core.offline.SaveUi
@@ -54,7 +55,7 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
     BackHandler(onBack = onClose)
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Ink.ink).pointerInput(Unit) { detectTapGestures { } }) {
-        val side = minOf(maxWidth - 48.dp, maxHeight - 450.dp).coerceAtLeast(150.dp)
+        val side = minOf(maxWidth - 48.dp, maxHeight - 420.dp).coerceAtLeast(150.dp)
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -112,22 +113,33 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 IconButton(Glyphs.Next, "Следующий", { g.player.next() }, enabled = ui.hasNext, box = 60.dp, dp = 32.dp)
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                PillButton(if (g.room.inRoom) "Комната" else "Слушать вместе", { g.nav.open(Overlay.Room) }, primary = false)
-            }
-            Spacer(Modifier.height(8.dp))
             val scope = rememberCoroutineScope()
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                PillButton("В плейлист", { g.pickTrack.value = track }, primary = false)
-                Spacer(Modifier.width(10.dp))
-                PillButton("Поделиться", { scope.launch { g.actions.share(g.shared.trackLink(track)) } }, primary = false)
-                Spacer(Modifier.width(10.dp))
-                PillButton("О треке", { g.infoTrack.value = track }, primary = false)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.ink2).border(1.dp, Ink.line, RoundedCornerShape(22.dp)).padding(vertical = 6.dp),
+            ) {
+                ActionTile(Glyphs.Group, if (g.room.inRoom) "Комната" else "Вместе", Modifier.weight(1f)) { g.nav.open(Overlay.Room) }
+                ActionTile(Glyphs.Add, "В плейлист", Modifier.weight(1f)) { g.pickTrack.value = track }
+                ActionTile(Glyphs.Share, "Поделиться", Modifier.weight(1f)) { scope.launch { g.actions.share(g.shared.trackLink(track)) } }
+                ActionTile(Glyphs.Info, "О треке", Modifier.weight(1f)) { g.infoTrack.value = track }
             }
             Spacer(Modifier.height(12.dp))
             SaveChip(SaveUi.of(track, offline), OfflinePolicy.keyOf(track) in offline.savedKeys) { onSaveTap(g, track, offline) }
             Spacer(Modifier.height(18.dp))
         }
+    }
+}
+
+/** Кнопка нижнего ряда плеера: значок над подписью, четыре равные доли. */
+@Composable
+private fun ActionTile(glyph: Glyphs, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.height(54.dp).semantics { contentDescription = label }.tap(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Glyph(glyph, color = Ink.bone, dp = 22.dp)
+        Spacer(Modifier.height(4.dp))
+        T(label, style = Type.label.copy(fontSize = 11.sp, letterSpacing = 0.2.sp), color = Ink.mute, maxLines = 1, align = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 

@@ -20,7 +20,7 @@ struct PlayerView: View {
         let ui = player.value
         GeometryReader { geo in
             if let track = ui.track {
-                let side = max(150, min(geo.size.width - 48, geo.size.height - 450))
+                let side = max(150, min(geo.size.width - 48, geo.size.height - 420))
                 VStack(spacing: 0) {
                     header(track)
                     Spacer(minLength: 0)
@@ -43,13 +43,15 @@ struct PlayerView: View {
                     controls(ui)
                         .padding(.top, 14)
                     Spacer(minLength: 0)
-                    PillButton(graph.room.inRoom ? "Комната" : "Слушать вместе", primary: false) { graph.nav.open(.room) }
-                        .padding(.bottom, 8)
-                    HStack(spacing: 10) {
-                        PillButton("В плейлист", primary: false) { graph.pick.track = track }
-                        PillButton("Поделиться", primary: false) { shareTrack(track) }
-                        PillButton("О треке", primary: false) { graph.info.track = track }
+                    HStack(spacing: 0) {
+                        ActionTile(glyph: .group, label: graph.room.inRoom ? "Комната" : "Вместе") { graph.nav.open(.room) }
+                        ActionTile(glyph: .add, label: "В плейлист") { graph.pick.track = track }
+                        ActionTile(glyph: .share, label: "Поделиться") { shareTrack(track) }
+                        ActionTile(glyph: .info, label: "О треке") { graph.info.track = track }
                     }
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Ink.ink2))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Ink.line, lineWidth: 1))
                     .padding(.bottom, 12)
                     SaveChip(
                         ui: SaveUi.of(track, offline.value),
@@ -137,6 +139,28 @@ struct PlayerView: View {
                     withAnimation(.easeOut(duration: 0.2)) { drag = 0 }
                 }
             }
+    }
+}
+
+/// Кнопка нижнего ряда плеера: значок над подписью, четыре равные доли.
+private struct ActionTile: View {
+    let glyph: Glyphs
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                GlyphView(glyph, color: Ink.bone, size: 22)
+                T(label, BType.label.sized(11, tracking: 0.2), color: Ink.mute, lines: 1, align: .center)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TapStyle())
+        .accessibilityLabel(label)
     }
 }
 

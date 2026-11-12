@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
@@ -81,10 +82,18 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Overlay.None -> Unit
         }
 
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 10.dp)) {
+        // Одна панель во всю ширину: сверху мини-плеер (если что-то играет), под ним вкладки. Фон уходит под системную панель.
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Ink.ink2)
+                .drawBehind { drawRect(Ink.line2, size = androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx())) }
+                .navigationBarsPadding(),
+        ) {
             if (player.track != null) {
                 MiniPlayer(g, player)
-                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Ink.line))
             }
             BottomBar(tab, downloading) { g.nav.go(it) }
         }
@@ -100,22 +109,14 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         PlaylistPicker(g)
         TrackInfoSheet(g)
 
-        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 150 else 90)
+        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 142 else 80)
     }
 }
 
 @Composable
 private fun BottomBar(tab: Tab, downloading: Boolean, onTab: (Tab) -> Unit) {
     Row(
-        Modifier
-            .padding(horizontal = 16.dp)
-            .fillMaxWidth()
-            .height(62.dp)
-            .clip(CircleShape)
-            .background(Ink.ink2)
-            .border(1.dp, Ink.line, CircleShape)
-            .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TabItem(Glyphs.Bolt, "Вспышка", tab == Tab.Flash, false, Modifier.weight(1f)) { onTab(Tab.Flash) }
@@ -125,59 +126,55 @@ private fun BottomBar(tab: Tab, downloading: Boolean, onTab: (Tab) -> Unit) {
     }
 }
 
+/** Значок над подписью. Выбранная вкладка: акцентный цвет и мягкая капсула под значком. Подписи видны всегда. */
 @Composable
 private fun TabItem(glyph: Glyphs, label: String, active: Boolean, dot: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Box(
+    Column(
         modifier
-            .height(50.dp)
-            .clip(CircleShape)
-            .background(if (active) Ink.accentSoft else Color.Transparent)
+            .height(64.dp)
             .semantics { contentDescription = label }
             .tap(onClick = onClick),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                Glyph(glyph, color = if (active) Ink.accent else Ink.mute, dp = 22.dp)
-                if (dot) {
-                    Box(Modifier.size(8.dp).align(Alignment.TopEnd).clip(CircleShape).background(Ink.accent))
-                }
-            }
-            if (active) {
-                Spacer(Modifier.width(5.dp))
-                T(label, style = Type.button.copy(fontSize = 12.sp), color = Ink.accent, maxLines = 1)
+        Box(
+            Modifier.width(56.dp).height(30.dp).clip(CircleShape).background(if (active) Ink.accentSoft else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Glyph(glyph, color = if (active) Ink.accent else Ink.mute, dp = 22.dp)
+            if (dot) {
+                Box(Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 10.dp).size(8.dp).clip(CircleShape).background(Ink.accent))
             }
         }
+        Spacer(Modifier.height(3.dp))
+        T(label, style = Type.label.copy(fontSize = 11.sp, letterSpacing = 0.2.sp), color = if (active) Ink.accent else Ink.mute, maxLines = 1, align = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
+/** Строка мини-плеера внутри панели: обложка, название, пауза и следующий; тонкая полоска хода на верхней кромке. */
 @Composable
 private fun MiniPlayer(g: Graph, ui: PlayerUi) {
     val track = ui.track ?: return
-    val shape = RoundedCornerShape(24.dp)
     Box(
         Modifier
-            .padding(horizontal = 12.dp)
             .fillMaxWidth()
-            .clip(shape)
-            .background(Ink.ink3)
-            .border(1.dp, Ink.line, shape)
+            .height(62.dp)
             .tap { g.nav.openPlayer(true) },
     ) {
-        Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(track.artwork, Modifier.size(44.dp), radius = 14.dp, noteDp = 20.dp)
+        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Cover(track.artwork, Modifier.size(44.dp), radius = 10.dp, noteDp = 20.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 T(track.title, style = Type.title.copy(fontSize = 14.sp), maxLines = 1)
                 T(track.artist, style = Type.small, color = Ink.mute, maxLines = 1)
             }
-            IconButton(if (ui.playing) Glyphs.Pause else Glyphs.Play, if (ui.playing) "Пауза" else "Играть", { g.player.toggle() })
+            IconButton(if (ui.playing) Glyphs.Pause else Glyphs.Play, if (ui.playing) "Пауза" else "Играть", { g.player.toggle() }, dp = 26.dp)
             IconButton(Glyphs.Next, "Следующий", { g.player.next() }, enabled = ui.hasNext)
         }
         val fraction = if (ui.durationMs > 0) (ui.positionMs.toFloat() / ui.durationMs).coerceIn(0f, 1f) else 0f
         Box(
             Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.TopStart)
                 .fillMaxWidth()
                 .height(2.dp)
                 .graphicsLayer { scaleX = fraction; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }

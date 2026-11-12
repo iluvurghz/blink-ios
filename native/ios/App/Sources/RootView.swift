@@ -1,17 +1,14 @@
 import SwiftUI
 import BlinkCore
 
-/// Размеры плавающей нижней панели. Списки оставляют под неё место, а тосты встают над ней.
+/// Размеры нижней панели. Списки оставляют под неё место, а тосты встают над ней.
 enum Chrome {
-    static let barHeight: CGFloat = 62
-    static let barGap: CGFloat = 10
-    static let miniHeight: CGFloat = 60
-    static let miniGap: CGFloat = 8
+    static let tabsHeight: CGFloat = 64
+    static let miniHeight: CGFloat = 62
 
-    /// Высота панели над нижней безопасной зоной (полоска вкладок и, если что-то играет, мини-плеер).
+    /// Высота панели над нижней безопасной зоной (вкладки и, если что-то играет, мини-плеер).
     static func height(hasTrack: Bool) -> CGFloat {
-        let bar = barHeight + barGap
-        return hasTrack ? bar + miniHeight + miniGap : bar
+        return hasTrack ? tabsHeight + miniHeight : tabsHeight
     }
 }
 
@@ -30,15 +27,15 @@ struct RootView: View {
 
         ZStack(alignment: .bottom) {
             Ink.ink.ignoresSafeArea()
-            FlashView(bottomInset: chrome + 16)
+            FlashView(bottomInset: chrome + 12)
                 .screen(tab == .flash)
-            SearchView(active: tab == .search, bottomInset: chrome + 16)
+            SearchView(active: tab == .search, bottomInset: chrome + 12)
                 .screen(tab == .search)
-            DownloadsView(bottomInset: chrome + 16)
+            DownloadsView(bottomInset: chrome + 12)
                 .screen(tab == .downloads)
-            AccountView(active: tab == .account, bottomInset: chrome + 16)
+            AccountView(active: tab == .account, bottomInset: chrome + 12)
                 .screen(tab == .account)
-            OverlayHost(overlay: nav.value.overlay, bottomInset: chrome + 16)
+            OverlayHost(overlay: nav.value.overlay, bottomInset: chrome + 12)
                 .zIndex(0.5)
             ChromeView(withTrack: withTrack)
             if playerOpen {
@@ -60,7 +57,8 @@ struct RootView: View {
 
 // ---------- нижняя панель ----------
 
-/// Мини-плеер и полоска вкладок. Клавиатура панель не двигает: она остаётся под ней, как на Android.
+/// Одна панель во всю ширину: сверху мини-плеер (если что-то играет), под ним вкладки. Фон уходит под
+/// индикатор «домой». Клавиатура панель не двигает: она остаётся под ней, как на Android.
 private struct ChromeView: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var nav: NavStore
@@ -68,14 +66,20 @@ private struct ChromeView: View {
     let withTrack: Bool
 
     var body: some View {
-        VStack(spacing: Chrome.miniGap) {
+        VStack(spacing: 0) {
             if withTrack {
                 MiniPlayer()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                Rectangle().fill(Ink.line).frame(height: 1)
             }
             BottomBar(tab: nav.value.tab, downloading: downloading.value) { graph.nav.go($0) }
         }
-        .padding(.bottom, Chrome.barGap)
+        .frame(maxWidth: .infinity)
+        .background(
+            Ink.ink2
+                .overlay(alignment: .top) { Rectangle().fill(Ink.line2).frame(height: 1) }
+                .ignoresSafeArea(edges: .bottom)
+        )
         .animation(.easeOut(duration: 0.22), value: withTrack)
         .ignoresSafeArea(.keyboard)
     }
@@ -87,20 +91,18 @@ private struct BottomBar: View {
     let onTab: (AppTab) -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             TabItem(glyph: .bolt, label: "Вспышка", active: tab == .flash, dot: false) { onTab(.flash) }
             TabItem(glyph: .search, label: "Поиск", active: tab == .search, dot: false) { onTab(.search) }
             TabItem(glyph: .download, label: "Скачанное", active: tab == .downloads, dot: downloading) { onTab(.downloads) }
             TabItem(glyph: .person, label: "Профиль", active: tab == .account, dot: false) { onTab(.account) }
         }
-        .padding(6)
-        .frame(height: Chrome.barHeight)
-        .background(Capsule().fill(Ink.ink2))
-        .overlay(Capsule().stroke(Ink.line, lineWidth: 1))
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
+        .frame(height: Chrome.tabsHeight)
     }
 }
 
+/// Значок над подписью. Выбранная вкладка: акцентный цвет и мягкая капсула под значком. Подписи видны всегда.
 private struct TabItem: View {
     let glyph: Glyphs
     let label: String
@@ -110,22 +112,23 @@ private struct TabItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
                     GlyphView(glyph, color: active ? Ink.accent : Ink.mute, size: 22)
+                        .frame(width: 56, height: 30)
+                        .background(Capsule().fill(active ? Ink.accentSoft : Color.clear))
                     if dot {
                         Circle().fill(Ink.accent).frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(Ink.ink2, lineWidth: 2))
+                            .offset(x: -10, y: 2)
                     }
                 }
-                if active {
-                    T(label, BType.button.sized(12), color: Ink.accent, lines: 1)
-                        .minimumScaleFactor(0.75)
-                }
+                T(label, BType.label.sized(11, tracking: 0.2), color: active ? Ink.accent : Ink.mute, lines: 1, align: .center)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(Capsule().fill(active ? Ink.accentSoft : Color.clear))
-            .contentShape(Capsule())
+            .frame(height: Chrome.tabsHeight)
+            .contentShape(Rectangle())
         }
         .buttonStyle(TapStyle())
         .animation(.easeOut(duration: 0.18), value: active)
@@ -134,6 +137,7 @@ private struct TabItem: View {
     }
 }
 
+/// Строка мини-плеера внутри панели: обложка, название, пауза и следующий; тонкая полоска хода на верхней кромке.
 private struct MiniPlayer: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var player: PlayerStore
@@ -145,8 +149,8 @@ private struct MiniPlayer: View {
             HStack(spacing: 0) {
                 Button(action: { graph.nav.openPlayer(true) }) {
                     HStack(spacing: 12) {
-                        Cover(track.artwork, size: 44, radius: 14, note: 20)
-                        VStack(alignment: .leading, spacing: 0) {
+                        Cover(track.artwork, size: 44, radius: 10, note: 20)
+                        VStack(alignment: .leading, spacing: 1) {
                             T(track.title, BType.title.sized(14), lines: 1)
                             T(track.artist, .small, color: Ink.mute, lines: 1)
                         }
@@ -157,12 +161,12 @@ private struct MiniPlayer: View {
                 .buttonStyle(TapStyle())
                 .accessibilityLabel(track.title + ", " + track.artist)
                 .accessibilityHint("Открыть плеер")
-                IconButton(ui.playing ? .pause : .play, ui.playing ? "Пауза" : "Играть") { graph.player.toggle() }
+                IconButton(ui.playing ? .pause : .play, ui.playing ? "Пауза" : "Играть", size: 26) { graph.player.toggle() }
                 IconButton(.next, "Следующий", enabled: ui.hasNext) { graph.player.next() }
             }
-            .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 4))
-            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Ink.ink3))
-            .overlay(alignment: .bottomLeading) {
+            .padding(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 8))
+            .frame(height: Chrome.miniHeight)
+            .overlay(alignment: .topLeading) {
                 GeometryReader { geo in
                     Rectangle()
                         .fill(Ink.accent)
@@ -171,9 +175,6 @@ private struct MiniPlayer: View {
                 }
                 .frame(height: 2)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Ink.line, lineWidth: 1))
-            .padding(.horizontal, 12)
         }
     }
 }
