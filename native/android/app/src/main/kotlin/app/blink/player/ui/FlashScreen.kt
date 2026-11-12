@@ -29,6 +29,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -258,9 +261,9 @@ private fun auraFrame(px: IntArray, t: Float, cs: List<Color>, energy: Float) {
 }
 
 /**
- * Главный экран Вспышки на всю высоту, как «Моя волна», но в стиле Blink: живой свет цветов обложки,
- * большое «Вспышка.», светящаяся кнопка. Когда играет: артист крупно, обложка, пауза, плашка трека с ходом и сердце.
- * Внизу режимы потока пузырями.
+ * Главный экран Вспышки на всю высоту, как на сайте (FlashHome.jsx) поверх живого света: сверху плашка «Играет …»
+ * с крестиком, в середине «Точка» из точек (нажать: вспыхивает и собирается в обложку), под ней «Вспышка.» с подсказкой,
+ * а когда играет: название, ход трека точками, кнопки сайта и режимы словами с точкой под выбранным.
  */
 @Composable
 private fun FlashHero(g: Graph, modifier: Modifier) {
@@ -270,141 +273,139 @@ private fun FlashHero(g: Graph, modifier: Modifier) {
     val player by g.player.state.collectAsStateWithLifecycle()
     val palette by g.stage.palette.collectAsStateWithLifecycle()
     val library by g.library.state.collectAsStateWithLifecycle()
+    val playerOpen by g.nav.playerOpen.collectAsStateWithLifecycle()
     val accent by animateColorAsState(palette.accent.color(), tween(1200), label = "heroAccent")
     val ink = palette.accentInk.color()
     val track = player.track
-    val flashing = active && track != null
+    // Вспышка «горит», когда заиграл её трек; до того (и если до нажатия играло своё) точки разгораются
+    var startId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(active) { startId = if (active) g.player.state.value.track?.id else null }
+    val phase = when {
+        active && track != null && (track.id != startId || !loading) -> DotPhase.Flash
+        active || loading -> DotPhase.Igniting
+        else -> DotPhase.Rest
+    }
+    val flashing = phase == DotPhase.Flash && track != null
     val liked = remember(library, track?.id) { track != null && g.library.isLiked(track.id) }
     val hint = remember(library) {
         val names = favouriteArtists(g.library.likes).take(3).map { it.first }
         if (names.isEmpty()) "Слушайте и ставьте лайки, и поток подстроится под вас" else names.joinToString(", ") + " и похожее на них"
     }
 
-    Box(modifier.fillMaxWidth()) {
-        val playerOpen by g.nav.playerOpen.collectAsStateWithLifecycle()
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+        val w = maxWidth
+        val side = (maxHeight - 540.dp).coerceAtLeast(176.dp).coerceAtMost(minOf(318.dp, w - 44.dp)).coerceAtLeast(120.dp)
         FlashAura(palette, if (player.playing) 1f else 0.35f, paused = playerOpen)
         Column(
             Modifier.fillMaxSize().statusBarsPadding().padding(top = 10.dp, bottom = 96.dp).navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // сверху: знак Blink, а пока играет Вспышка: плашка режима с крестиком
-            Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
-                if (flashing) {
-                    Row(
-                        Modifier.height(44.dp).clip(CircleShape).background(Color(0x40000000)).border(1.dp, Color(0x1CFFFFFF), CircleShape).padding(start = 18.dp, end = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        T("Вспышка · " + mode.title, style = Type.button.copy(fontSize = 15.sp), color = accent, maxLines = 1)
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            Modifier.size(34.dp).clip(CircleShape).background(accent).semantics { contentDescription = "Остановить Вспышку" }.pressTap { g.flash.stop() },
-                            contentAlignment = Alignment.Center,
-                        ) { LineIcon(LineIcons.Close, color = ink, dp = 16.dp, stroke = 2.4f) }
-                    }
+            Box(Modifier.height(48.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (track != null) {
+                    HomePill(
+                        big = flashing,
+                        on = player.playing,
+                        title = if (flashing || active) "Играет Вспышка" else "Играет ваша музыка",
+                        sub = if (flashing || active) mode.title else "${track.title} · ${track.artist}",
+                        accent = accent,
+                        onOpen = { g.nav.openPlayer(true) },
+                        onClose = {
+                            g.flash.stop()
+                            g.player.stop()
+                        },
+                    )
                 } else {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        T("blink", style = Type.h2.copy(fontSize = 20.sp, letterSpacing = (-0.6).sp), color = Ink.bone)
+                        T("blink", style = Type.h2.copy(fontSize = 20.sp, letterSpacing = (-0.8).sp), color = Ink.bone)
                         Box(Modifier.padding(start = 2.dp, bottom = 5.dp).size(6.dp).clip(CircleShape).background(accent))
                     }
                 }
             }
             Spacer(Modifier.weight(1f))
+            var dx by remember { mutableStateOf(0f) }
+            DotObject(
+                phase = phase,
+                accent = accent,
+                photo = track?.artwork,
+                size = side,
+                paused = playerOpen,
+                modifier = Modifier
+                    .graphicsLayer { translationX = dx * 0.3f }
+                    .semantics { contentDescription = if (flashing) "Открыть плеер" else "Включить Вспышку" }
+                    .pointerInput(flashing) {
+                        if (!flashing) return@pointerInput
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (dx < -120f) g.player.next() else if (dx > 120f) g.player.previous()
+                                dx = 0f
+                            },
+                            onDragCancel = { dx = 0f },
+                        ) { _, d -> dx += d }
+                    }
+                    .pressTap(enabled = flashing || phase == DotPhase.Rest) {
+                        if (flashing) g.nav.openPlayer(true) else g.flash.start()
+                    },
+            ) {
+                if (track != null) NetImage(ArtUrl.scaled(track.artwork, 600), Modifier.fillMaxSize())
+            }
+            Spacer(Modifier.height(22.dp))
             if (flashing && track != null) {
+                val titleSp = (w.value * 0.068f).coerceIn(22f, 30f)
                 T(
-                    track.artist,
-                    Modifier.padding(horizontal = 20.dp),
-                    Type.display.copy(fontSize = 40.sp, lineHeight = 42.sp, letterSpacing = (-1.8).sp),
+                    track.title,
+                    Modifier.padding(horizontal = 28.dp),
+                    Type.display.copy(fontSize = titleSp.sp, lineHeight = (titleSp * 1.08f).sp, letterSpacing = (-0.045f * titleSp).sp),
                     maxLines = 2,
                     align = TextAlign.Center,
                 )
-                Spacer(Modifier.height(26.dp))
-                var dx by remember { mutableStateOf(0f) }
-                Box(
-                    Modifier
-                        .size(148.dp)
-                        .graphicsLayer { translationX = dx * 0.35f }
-                        .shadow(36.dp, RoundedCornerShape(26.dp), ambientColor = accent, spotColor = accent)
-                        .clip(RoundedCornerShape(26.dp))
-                        .pointerInput(track.id) {
-                            detectHorizontalDragGestures(
-                                onDragEnd = {
-                                    if (dx < -90f) g.player.next() else if (dx > 90f) g.player.previous()
-                                    dx = 0f
-                                },
-                                onDragCancel = { dx = 0f },
-                            ) { _, d -> dx += d }
-                        }
-                        .semantics { contentDescription = "Открыть плеер" }
-                        .tap { g.nav.openPlayer(true) },
-                ) { NetImage(ArtUrl.scaled(track.artwork, 400), Modifier.fillMaxSize()) }
-                Spacer(Modifier.height(26.dp))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RoundGlass(if (player.playing) LineIcons.Pause else LineIcons.Play, if (player.playing) "Пауза" else "Играть") { g.player.toggle() }
-                    Spacer(Modifier.width(8.dp))
-                    val fraction = if (player.durationMs > 0) (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f) else 0f
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(64.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x33000000))
-                            .drawBehind { drawRect(accent.copy(alpha = 0.3f), size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height)) }
-                            .border(1.dp, Color(0x1AFFFFFF), CircleShape)
-                            .tap { g.nav.openPlayer(true) }
-                            .padding(horizontal = 18.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        T(track.title, style = Type.title.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold), maxLines = 1, align = TextAlign.Center)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    RoundGlass(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", on = liked, accent = accent) { g.flash.toggleLike(track) }
-                }
+                Spacer(Modifier.height(7.dp))
+                T(
+                    track.artist,
+                    Modifier.padding(horizontal = 28.dp),
+                    Type.body.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                    Ink.bone.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    align = TextAlign.Center,
+                )
                 Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    QuietAction(LineIcons.ThumbDown, "Не моё") { g.flash.dislike(track) }
-                    QuietAction(LineIcons.Next, "Дальше") { g.player.next() }
+                DotProgress(player.positionMs, player.durationMs, accent, { g.player.seekTo(it) }, Modifier.padding(horizontal = 22.dp))
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BareButton(LineIcons.ThumbDown, "Не моё", 22.dp) { g.flash.dislike(track) }
+                    BareButton(LineIcons.Prev, "Назад", 24.dp) { g.player.previous() }
+                    IrisButton(player.playing, player.buffering, accent, ink) { g.player.toggle() }
+                    BareButton(LineIcons.Next, "Дальше", 24.dp) { g.player.next() }
+                    BareButton(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", 22.dp, on = liked, accent = accent) { g.flash.toggleLike(track) }
                 }
             } else {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    T("Вспышка", style = Type.display.copy(fontSize = 56.sp, lineHeight = 56.sp, letterSpacing = (-3).sp), color = Ink.bone, maxLines = 1)
-                    Box(Modifier.padding(start = 4.dp, bottom = 9.dp).size(10.dp).clip(CircleShape).background(accent))
-                }
-                Spacer(Modifier.height(26.dp))
-                Box(
-                    Modifier
-                        .size(112.dp)
-                        .shadow(44.dp, CircleShape, ambientColor = accent, spotColor = accent)
-                        .clip(CircleShape)
-                        .background(accent)
-                        .semantics { contentDescription = "Включить Вспышку" }
-                        .pressTap(!loading) { g.flash.start() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (loading) Spinner(color = ink, dp = 48.dp) else LineIcon(LineIcons.Play, color = ink, dp = 46.dp, stroke = 2.2f)
-                }
-                Spacer(Modifier.height(26.dp))
-                if (track != null) {
-                    Row(
-                        Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(60.dp).clip(CircleShape).background(Color(0x40000000)).border(1.dp, Color(0x1AFFFFFF), CircleShape)
-                            .tap { g.nav.openPlayer(true) }.padding(start = 22.dp, end = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        T("${track.artist} — ${track.title}", Modifier.weight(1f), Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp), maxLines = 1, align = TextAlign.Center)
-                        StageIcon(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", { g.flash.toggleLike(track) }, dp = 24.dp, box = 48.dp, on = liked, accent = accent)
-                    }
-                    Spacer(Modifier.height(18.dp))
-                }
                 T(
-                    if (loading) "Подбираю музыку…" else hint,
-                    Modifier.padding(horizontal = 36.dp),
-                    Type.body.copy(fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold),
-                    Ink.bone.copy(alpha = 0.85f),
+                    "ВАШ ЛИЧНЫЙ ПОТОК",
+                    style = Type.label.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.9.sp),
+                    color = Ink.bone.copy(alpha = 0.72f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(10.dp))
+                val heroSp = (w.value * 0.15f).coerceIn(40f, 58f)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    T("Вспышка", style = Type.display.copy(fontSize = heroSp.sp, lineHeight = (heroSp * 0.95f).sp, letterSpacing = (-0.055f * heroSp).sp), color = Ink.bone, maxLines = 1)
+                    Box(Modifier.padding(start = (heroSp * 0.06f).dp, bottom = (heroSp * 0.16f).dp).size((heroSp * 0.18f).dp).clip(CircleShape).background(accent))
+                }
+                Spacer(Modifier.height(12.dp))
+                T(
+                    if (phase == DotPhase.Igniting) "Подбираю музыку…" else hint,
+                    Modifier.padding(horizontal = 36.dp).heightIn(min = 42.dp),
+                    Type.body.copy(fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold),
+                    Ink.bone,
                     maxLines = 2,
                     align = TextAlign.Center,
                 )
             }
             Spacer(Modifier.weight(1f))
-            ModeBubbles(palette, mode) { m ->
+            ModeWords(mode, accent) { m ->
                 g.flash.setMode(m)
                 if (!active && !loading) g.flash.start()
             }
@@ -412,55 +413,90 @@ private fun FlashHero(g: Graph, modifier: Modifier) {
     }
 }
 
+/** Плашка сверху, как на сайте (.hm-pill): точка Blink с кольцом (моргает, пока играет), что играет, и крестик. */
 @Composable
-private fun RoundGlass(icon: LineIcons, label: String, on: Boolean = false, accent: Color = Ink.accent, onClick: () -> Unit) {
-    Box(
-        Modifier.size(64.dp).clip(CircleShape).background(Color(0x33000000)).border(1.dp, Color(0x1AFFFFFF), CircleShape)
-            .semantics { contentDescription = label }.pressTap(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { LineIcon(icon, color = if (on) accent else Ink.bone, dp = 26.dp) }
-}
-
-@Composable
-private fun QuietAction(icon: LineIcons, label: String, onClick: () -> Unit) {
+private fun HomePill(big: Boolean, on: Boolean, title: String, sub: String, accent: Color, onOpen: () -> Unit, onClose: () -> Unit) {
+    val blink = androidx.compose.animation.core.rememberInfiniteTransition(label = "pillBlink")
+    val sy by blink.animateFloat(
+        initialValue = 1f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.keyframes {
+                durationMillis = 4600
+                1f at 4232
+                0.15f at 4416
+                1f at 4600
+            },
+        ),
+        label = "pillBlinkY",
+    )
     Row(
-        Modifier.clip(CircleShape).semantics { contentDescription = label }.pressTap(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier
+            .padding(horizontal = 16.dp)
+            .height(48.dp)
+            .clip(CircleShape)
+            .background(Ink.bone.copy(alpha = 0.075f))
+            .border(1.dp, Ink.bone.copy(alpha = 0.11f), CircleShape)
+            .padding(start = 6.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LineIcon(icon, color = Ink.bone.copy(alpha = 0.7f), dp = 18.dp)
-        Spacer(Modifier.width(6.dp))
-        T(label, style = Type.button.copy(fontSize = 13.sp), color = Ink.bone.copy(alpha = 0.7f), maxLines = 1)
+        Row(
+            Modifier.weight(1f, fill = false).semantics { contentDescription = "Открыть плеер" }.tap(onClick = onOpen).padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val d = if (big) 14.dp else 11.dp
+            val ring = if (big) 6.dp else 5.dp
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(d)
+                        .graphicsLayer { scaleY = if (on) sy else 1f }
+                        .drawBehind {
+                            drawCircle(
+                                Brush.radialGradient(listOf(accent.copy(alpha = 0.7f), accent.copy(alpha = 0f)), center, size.width / 2 + (if (big) 22 else 16).dp.toPx()),
+                                size.width / 2 + (if (big) 22 else 16).dp.toPx(),
+                            )
+                            drawCircle(accent.copy(alpha = if (big) 0.22f else 0.2f), size.width / 2 + ring.toPx())
+                            drawCircle(accent)
+                        },
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column {
+                T(title, style = Type.button.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold), color = Ink.bone, maxLines = 1)
+                T(sub, Modifier.widthIn(max = 200.dp), Type.small.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold), Ink.bone.copy(alpha = 0.62f), maxLines = 1)
+            }
+        }
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).semantics { contentDescription = "Остановить и закрыть" }.pressTap(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) { LineIcon(LineIcons.Close, color = Ink.bone.copy(alpha = 0.85f), dp = 16.dp, stroke = 2.2f) }
     }
 }
 
-/** Режимы потока пузырями внизу экрана: у каждого свой цвет из палитры, выбранный ярче и с точкой. */
+/** Режимы словами, как на сайте (.hm-modes): выбранный светлый, под ним точка Blink, она переезжает к новому. */
 @Composable
-private fun ModeBubbles(palette: app.blink.core.ui.Palette, mode: WaveMode, onPick: (WaveMode) -> Unit) {
-    val hues = listOf(palette.accent, palette.glowB, palette.glowA, palette.glowC)
-    val icons = listOf(LineIcons.Bolt, LineIcons.Heart, LineIcons.Search, LineIcons.Plus)
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        WaveMode.entries.forEachIndexed { i, m ->
+private fun ModeWords(mode: WaveMode, accent: Color, onPick: (WaveMode) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.Center) {
+        WaveMode.entries.forEach { m ->
             val on = m == mode
-            val c = hues[i % hues.size].vivid(0.5).color()
-            val shape = RoundedCornerShape(topStartPercent = 50, topEndPercent = 50, bottomStartPercent = 22, bottomEndPercent = 22)
-            Column(
+            val c by animateColorAsState(if (on) Ink.bone else Ink.bone.copy(alpha = 0.55f), tween(200), label = "mode")
+            Box(
                 Modifier
-                    .width(118.dp)
-                    .height(112.dp)
-                    .clip(shape)
-                    .background(Brush.verticalGradient(listOf(c.copy(alpha = if (on) 0.95f else 0.55f), c.copy(alpha = if (on) 0.35f else 0.12f))))
-                    .border(if (on) 1.5.dp else 1.dp, if (on) Color(0x66FFFFFF) else Color(0x14FFFFFF), shape)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .semantics { contentDescription = "Режим ${m.title}"; selected = on }
-                    .pressTap { onPick(m) }
-                    .padding(top = 24.dp, bottom = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .tap { onPick(m) }
+                    .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                LineIcon(icons[i % icons.size], color = Ink.bone.copy(alpha = if (on) 1f else 0.75f), dp = 24.dp)
-                Spacer(Modifier.weight(1f))
-                T(m.title, style = Type.button.copy(fontSize = 14.sp), color = Ink.bone.copy(alpha = if (on) 1f else 0.8f), maxLines = 1)
+                T(m.title, style = Type.button.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold), color = c, maxLines = 1)
+                androidx.compose.animation.AnimatedVisibility(
+                    on,
+                    Modifier.align(Alignment.BottomCenter).offset(y = 5.dp),
+                    enter = androidx.compose.animation.scaleIn(tween(260)) + androidx.compose.animation.fadeIn(tween(200)),
+                    exit = androidx.compose.animation.scaleOut(tween(160)) + androidx.compose.animation.fadeOut(tween(160)),
+                ) { Box(Modifier.size(5.dp).clip(CircleShape).background(accent)) }
             }
         }
     }

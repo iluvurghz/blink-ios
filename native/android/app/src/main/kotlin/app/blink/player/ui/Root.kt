@@ -55,7 +55,7 @@ import kotlinx.coroutines.flow.collectLatest
 
 /** Корень интерфейса. `onDownloadsStarted` зовётся, когда началась первая загрузка: платформа может спросить разрешение на уведомления. */
 @Composable
-fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: String = "") {
+fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: String = "", introAt: Float? = null) {
     val tab by g.nav.tab.collectAsStateWithLifecycle()
     val overlay by g.nav.overlay.collectAsStateWithLifecycle()
     val playerOpen by g.nav.playerOpen.collectAsStateWithLifecycle()
@@ -101,6 +101,10 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         TrackInfoSheet(g)
 
         ToastHost(g, bottomPadding = if (player.track != null && !playerOpen && tab != Tab.Flash) 170 else 90)
+
+        // заставка при запуске: «blink» из точек, как в приложении на сайте
+        var intro by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
+        if (intro) DotIntro(onDone = { intro = false }, freezeAt = introAt)
     }
 }
 

@@ -224,6 +224,14 @@ def home_steps():
         step("14-flash-on", dump())
 
 
+def intro_steps():
+    """Заставка при запуске («blink» из точек): приложение перезапускается с кадром, остановленным на нужном времени."""
+    for name, at in (("00-intro-ring", "0.5"), ("00-intro-word", "1.6")):
+        adb("shell", "am", "start", "-S", "-W", "-n", f"{PKG}/{ACTIVITY}", "--ef", "blink_intro_at", at, check=False)
+        time.sleep(5)
+        step(name, dump())
+
+
 def main():
     apks = sorted(glob.glob("apk/*.apk"))
     if not apks:
@@ -277,6 +285,7 @@ def main():
                 step("05-after-tap-on-track", dump())
                 player_steps()
                 home_steps()
+                intro_steps()
             else:
                 log("строки результатов не нашли, пропускаю шаг с воспроизведением")
         else:

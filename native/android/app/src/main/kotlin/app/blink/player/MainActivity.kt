@@ -28,7 +28,9 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-        setContent { BlinkRoot(graph, onDownloadsStarted = ::askNotificationsOnce) }
+        // blink_intro_at: держать заставку на одном кадре (снимки экрана в CI)
+        val introAt = intent?.getFloatExtra("blink_intro_at", -1f)?.takeIf { it >= 0f }
+        setContent { BlinkRoot(graph, onDownloadsStarted = ::askNotificationsOnce, introAt = introAt) }
         handleLink(intent)
     }
 

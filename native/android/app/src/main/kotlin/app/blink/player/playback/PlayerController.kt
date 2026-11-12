@@ -120,6 +120,16 @@ class PlayerController(private val context: Context, private val scope: Coroutin
         command { c -> c.addMediaItems(items) }
     }
 
+    /** Остановить и убрать очередь: крестик на плашке главной, как на сайте. */
+    fun stop() {
+        known = emptyList()
+        command { c ->
+            c.stop()
+            c.clearMediaItems()
+            sync(c)
+        }
+    }
+
     /** Очередь и номер текущего трека для комнаты. */
     fun queue(): Pair<List<Track>, Int> = known to mutable.value.index
 
