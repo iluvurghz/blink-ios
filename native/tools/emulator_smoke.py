@@ -195,6 +195,8 @@ def player_steps():
     if tap_label("Очередь"):
         time.sleep(3)
         step("09-queue", dump())
+    tap_label("Любимое")  # чтобы на главной была живая коллекция
+    time.sleep(1)
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
     time.sleep(3)
     step("10-mini", dump())

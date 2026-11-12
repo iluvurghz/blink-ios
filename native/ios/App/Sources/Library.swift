@@ -29,7 +29,9 @@ struct LibraryOverlay: View {
                 VStack(alignment: .leading, spacing: 0) {
                     switch route {
                     case .home: LibraryHome()
-                    case .likes: TrackList(tracks: graph.library.likes, empty: "Нажмите сердечко у трека, и он появится здесь.", onRemove: { t in graph.library.toggleLike(t) })
+                    case .likes:
+                        PlaylistHeader(tracks: graph.library.likes, name: "Мне нравится", sub: Format.tracks(graph.library.likes.count), cover: nil)
+                        TrackList(tracks: graph.library.likes, empty: "Нажмите сердечко у трека, и он появится здесь.", onRemove: { t in graph.library.toggleLike(t) })
                     case .mine(let id): MyPlaylist(id: id)
                     case .shared(let code): RemotePlaylist(key: "s" + code, load: { try await graph.shared.fetchShared(code) })
                     case .editorial(let id): RemotePlaylist(key: "e" + id, load: { try await graph.shared.editorialOne(id) })
@@ -137,6 +139,75 @@ private struct LibraryHome: View {
     }
 }
 
+/// Шапка плейлиста: большая обложка (у «Мне нравится» сердце на цвете акцента), название,
+/// число треков и главные кнопки «Скачать», «Слушать», «Вперемешку».
+private struct PlaylistHeader: View {
+    @EnvironmentObject private var graph: Graph
+    @EnvironmentObject private var stage: StageModel
+    let tracks: [Track]
+    let name: String
+    let sub: String
+    let cover: String?
+    var owner: String = ""
+
+    var body: some View {
+        let p = stage.palette
+        let accent = p.accent.color
+        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        return VStack(spacing: 0) {
+            ZStack {
+                LinearGradient(colors: [accent, p.glowB.color, Ink.ink3], startPoint: .topLeading, endPoint: .bottomTrailing)
+                if let c = cover {
+                    NetImage(url: ArtUrl.scaled(c, 500))
+                } else {
+                    LineIconView(.heartFill, color: Ink.bone, size: 84)
+                }
+            }
+            .frame(width: 208, height: 208)
+            .clipShape(shape)
+            .shadow(color: accent.opacity(0.45), radius: 30)
+            T(name, .display, lines: 2, align: .center)
+                .padding(.top, 18)
+            T(owner.isEmpty ? sub : "\(sub) · от \(owner)", .body, color: Ink.mute, lines: 1, align: .center)
+                .padding(.top, 4)
+            HStack(spacing: 10) {
+                HeaderButton(icon: .download, label: "Скачать", bg: Color.white.opacity(0.1), fg: Ink.bone, enabled: !tracks.isEmpty) { graph.actions.saveAll(tracks) }
+                HeaderButton(icon: .play, label: "Слушать", bg: accent, fg: p.accentInk.color, enabled: !tracks.isEmpty) { graph.actions.play(tracks, at: 0) }
+                StageIcon(.shuffle, "Вперемешку", size: 20, box: 48, enabled: tracks.count > 1) { graph.actions.play(tracks.shuffled(), at: 0) }
+                    .background(Circle().fill(Color.white.opacity(0.1)))
+            }
+            .padding(.top, 18)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 18)
+    }
+}
+
+private struct HeaderButton: View {
+    let icon: LineIcon
+    let label: String
+    let bg: Color
+    let fg: Color
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                LineIconView(icon, color: fg, size: 20)
+                T(label, .button, color: fg, lines: 1)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .background(Capsule().fill(bg))
+        }
+        .buttonStyle(PressScale())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(label)
+    }
+}
+
 private struct MyPlaylist: View {
     @EnvironmentObject private var graph: Graph
     let id: String
@@ -148,10 +219,7 @@ private struct MyPlaylist: View {
 
     var body: some View {
         if let p = graph.library.playlist(id) {
-            HStack(spacing: 8) {
-                PillButton("Играть", enabled: !p.tracks.isEmpty) { graph.actions.play(p.tracks, at: 0) }
-                PillButton("Сохранить офлайн", primary: false, enabled: !p.tracks.isEmpty) { graph.actions.saveAll(p.tracks) }
-            }
+            PlaylistHeader(tracks: p.tracks, name: p.name, sub: Format.tracks(p.tracks.count), cover: p.cover ?? p.tracks.first?.artwork ?? "")
             HStack(spacing: 8) {
                 PillButton(sharing ? "Секунду…" : "Поделиться", primary: false, enabled: !p.tracks.isEmpty && !sharing) { share(p) }
                 PillButton("Имя", primary: false) {
@@ -222,10 +290,8 @@ private struct RemotePlaylist: View {
             case .failed:
                 T("Не получилось загрузить. Проверьте интернет.", .body, color: Ink.mute)
             case .ready(let s):
-                T(s.name, .h1, lines: 2)
-                if !s.owner.isEmpty { T("от " + s.owner, .small, color: Ink.mute) }
+                PlaylistHeader(tracks: s.tracks, name: s.name, sub: Format.tracks(s.tracks.count), cover: s.tracks.first?.artwork ?? "", owner: s.owner)
                 HStack(spacing: 8) {
-                    PillButton("Играть", enabled: !s.tracks.isEmpty) { graph.actions.play(s.tracks, at: 0) }
                     PillButton("Сохранить себе", primary: false, enabled: !s.tracks.isEmpty) {
                         graph.library.createPlaylist(s.name, tracks: s.tracks)
                         graph.toasts.show("Плейлист добавлен в ваши")

@@ -466,7 +466,7 @@ public final class LyricsApi: @unchecked Sendable {
         return out.trimmingCharacters(in: .whitespaces)
     }
 
-    static func mainArtist(_ artist: String) -> String {
+    public static func mainArtist(_ artist: String) -> String {
         guard let re = try? NSRegularExpression(pattern: ",|&| feat", options: [.caseInsensitive]) else { return artist }
         let ns = artist as NSString
         if let m = re.firstMatch(in: artist, range: NSRange(location: 0, length: ns.length)) {

@@ -195,7 +195,7 @@ jobs:
           shot 01-search 14 SIMCTL_CHILD_BLINK_START_TAB=search
           shot 02-downloads 6 SIMCTL_CHILD_BLINK_START_TAB=downloads
           shot 03-account 6 SIMCTL_CHILD_BLINK_START_TAB=account
-          shot 04-results 14 SIMCTL_CHILD_BLINK_START_QUERY=queen
+          shot 04-results 14 SIMCTL_CHILD_BLINK_START_TAB=search SIMCTL_CHILD_BLINK_START_QUERY=queen
           # Плеер: ранний снимок ловит тост об ошибке (он живёт пять секунд), поздний показывает итог.
           EARLY=05a-player-early
           shot 05-player 22 SIMCTL_CHILD_BLINK_START_PLAYER=1
@@ -207,6 +207,10 @@ jobs:
           shot 08-lyrics-full 24 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_STAGE=full
           shot 09-queue 16 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_STAGE=queue
           shot 10-mini 16 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_MINI=1
+          shot 11-home 14 SIMCTL_CHILD_BLINK_START_TAB=flash SIMCTL_CHILD_BLINK_START_LIKES=8
+          shot 12-collection 10 SIMCTL_CHILD_BLINK_START_TAB=flash SIMCTL_CHILD_BLINK_START_SCROLL=collection
+          shot 13-likes 8 SIMCTL_CHILD_BLINK_START_LIBRARY=likes
+          shot 14-flash-on 24 SIMCTL_CHILD_BLINK_START_FLASH=1
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
           xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'subsystem == "app.blink.player"' > shots/blink.log 2>&1 || true
           echo "итог: приложение живо на всех шагах" | tee shots/report.txt

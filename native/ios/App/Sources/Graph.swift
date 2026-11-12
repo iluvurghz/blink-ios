@@ -274,7 +274,7 @@ final class Graph: ObservableObject {
         flash.attach()
         tokens.append(library.observe { [weak self] _ in self?.libraryChanged() })
         search.refreshHome()
-        LaunchHooks.run(search: search, actions: actions, nav: nav, player: player)
+        LaunchHooks.run(search: search, actions: actions, nav: nav, player: player, flash: flash)
     }
 
     private func sessionChanged(_ userId: String?) {

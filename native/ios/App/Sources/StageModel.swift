@@ -109,6 +109,11 @@ final class StageModel: ObservableObject {
         translate = UserDefaults.standard.bool(forKey: "blink.lyricsTr")
     }
 
+    /// Фото артиста для полки «Любимые артисты» на главной.
+    func artistPhoto(_ t: Track) async -> String? {
+        return await photos.photo(t)
+    }
+
     var hasLyrics: Bool {
         if case .data(let d) = lyrics, d != .instrumental { return true }
         return false

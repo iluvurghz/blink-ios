@@ -112,9 +112,7 @@ private fun PlaylistHeader(g: Graph, tracks: List<Track>, name: String, sub: Str
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             HeaderButton(LineIcons.Download, "Скачать", Color(0x1AFFFFFF), Ink.bone, tracks.isNotEmpty()) { g.actions.saveAll(tracks) }
             HeaderButton(LineIcons.Play, "Слушать", accent, ink, tracks.isNotEmpty()) { g.actions.play(tracks, 0) }
-            HeaderButton(LineIcons.Shuffle, "Вперемешку", Color(0x1AFFFFFF), Ink.bone, tracks.size > 1) {
-                g.actions.play(tracks.shuffled(), 0)
-            }
+            StageIcon(LineIcons.Shuffle, "Вперемешку", { g.actions.play(tracks.shuffled(), 0) }, Modifier.clip(CircleShape).background(Color(0x1AFFFFFF)), dp = 20.dp, box = 48.dp, enabled = tracks.size > 1)
         }
         Spacer(Modifier.height(18.dp))
     }
