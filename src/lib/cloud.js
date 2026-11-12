@@ -2,12 +2,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { store, toast } from './store.js';
 import { sbFetch, sbUrl, probeRoute } from './sbroute.js';
+import { telegramToken } from './tgsignin.js';
+import { googleRedirectOn, googleRedirectUrl, googleReturn } from './gsignin.js';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const SITE = 'https://blinkmusic.cc/';
 
-export const isDesktop = !!(window.blink && !window.blink.isWeb);
+export const isDesktop = !!(window.blink && !window.blink.isWeb); // any app: the PC one or the phone one
+// The phone app (Capacitor) signs in and keeps the session like the PC app, but has no window of its own to manage.
+export const isPhoneApp = !!(window.blink && window.blink.mobile);
+export const isPc = isDesktop && !isPhoneApp;
 
 // In the app the session is kept by the app itself (survives updates, the offline copy and
 // address changes). A session left in this page's storage by an older version moves over.
@@ -352,22 +357,56 @@ export function initCloud() {
       channel = null;
     }
   });
-  if (isDesktop && window.blink.onDeepLink) {
-    window.blink.onDeepLink(async (url) => {
-      const q = new window.URL(url).searchParams;
-      const code = q.get('code');
-      const token = q.get('id_token');
-      if (!code && !token) return;
-      const { error } = token
-        ? await cloud.auth.signInWithIdToken({ provider: 'google', token, nonce: q.get('nonce') || undefined })
-        : await cloud.auth.exchangeCodeForSession(code);
-      if (error) toast('Не получилось войти через Google', 'error');
-      else {
-        store.set({ sheet: null });
-        toast('Вы вошли');
-      }
-    });
+  if (isDesktop && window.blink.onDeepLink) window.blink.onDeepLink(finishSignIn);
+  // Back from Google's account page on the site (?gsignin=web#id_token=...): finish the sign-in and clean the address.
+  if (!isDesktop && new URLSearchParams(location.search).get('gsignin') === 'web') {
+    const back = googleReturn();
+    history.replaceState(null, '', location.pathname);
+    if (back) {
+      signInGoogleToken(back.token, back.nonce).then(
+        () => toast('Вы вошли'),
+        () => toast('Не получилось войти через Google', 'error')
+      );
+    }
   }
+}
+
+// The address Google/Supabase sent the listener back to (from the app's sign-in window or the
+// blink:// link of the browser flow): finishes the sign-in with its code or ID token.
+async function finishSignIn(url) {
+  let q;
+  try {
+    q = new window.URL(url).searchParams;
+  } catch {
+    return false;
+  }
+  const code = q.get('code');
+  const token = q.get('id_token');
+  const tg = q.get('tg_hash');
+  if (tg) {
+    const { error } = await cloud.auth.verifyOtp({ token_hash: tg, type: 'magiclink' });
+    if (error) {
+      toast('Не получилось войти через Telegram', 'error');
+      return false;
+    }
+    store.set({ sheet: null });
+    toast('Вы вошли');
+    return true;
+  }
+  if (!code && !token) {
+    if (q.get('error') || q.get('error_description')) toast('Вход отменён или не получился', 'error');
+    return false;
+  }
+  const { error } = token
+    ? await cloud.auth.signInWithIdToken({ provider: 'google', token, nonce: q.get('nonce') || undefined })
+    : await cloud.auth.exchangeCodeForSession(code);
+  if (error) {
+    toast('Не получилось войти через Google', 'error');
+    return false;
+  }
+  store.set({ sheet: null });
+  toast('Вы вошли');
+  return true;
 }
 
 export async function signUp(email, password, name) {
@@ -381,15 +420,62 @@ export async function signIn(email, password) {
   if (error) throw error;
 }
 
+// Is the running app at least this version? (the Electron app and the native one both answer window.blink.version())
+async function appAtLeast(min) {
+  try {
+    const v = String(await window.blink.version()).split('.').map((n) => parseInt(n, 10) || 0);
+    const m = min.split('.').map((n) => parseInt(n, 10));
+    for (let i = 0; i < 3; i++) {
+      if ((v[i] || 0) !== m[i]) return (v[i] || 0) > m[i];
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function signInGoogle() {
+  // The app signs in in the SYSTEM browser: Google refuses to sign in inside embedded windows ("this browser or app may not be
+  // secure"). blinkmusic.cc/?gsignin=desktop opens there, goes to Google, and the ID token comes back as blink://auth?id_token=...
+  // (the browser asks to open Blink), which the app handles through onDeepLink (finishSignIn).
+  if (isDesktop && window.blink.open) {
+    window.blink.open(SITE + '?gsignin=desktop');
+    toast('Продолжите вход в браузере. Когда выберете аккаунт, он вернёт вас в Blink');
+    return;
+  }
+  // Straight to Google's own account page (our domain on its screen, one window): the site goes there in the same tab, an app's
+  // sign-in window opens the same way through the handoff page. See lib/gsignin.js for what Google Cloud needs for it.
+  if (googleRedirectOn()) {
+    if (isDesktop && window.blink.authWindow) {
+      const landed = await window.blink.authWindow(SITE + '?gsignin=desktop');
+      if (landed) await finishSignIn(landed);
+      return;
+    }
+    if (isDesktop) return void window.blink.open(SITE + '?gsignin=desktop');
+    location.assign(await googleRedirectUrl('web'));
+    return;
+  }
   if (isDesktop) {
-    // Google doesn't allow sign-in inside app windows: use the real browser,
-    // which hands the code back through the blink:// link.
+    // Apps from 1.9.8 sign in on blinkmusic.cc/?gsignin=desktop inside their own window: Google's button there shows OUR domain
+    // (not "<project>.supabase.co"), and the ID token comes back as blink://auth?id_token=... Older apps cannot show Google's
+    // pop-up, they keep the Supabase OAuth way below.
+    if (window.blink.authWindow && (await appAtLeast('1.9.8'))) {
+      const landed = await window.blink.authWindow(SITE + '?gsignin=desktop');
+      if (landed) await finishSignIn(landed);
+      return;
+    }
+    // Sign-in happens in Blink's own window (main.cjs auth:window), which hands the address with
+    // the code back. An older app without it uses the real browser and the blink:// link.
     const { data, error } = await cloud.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: SITE + '?desktop=1', skipBrowserRedirect: true },
     });
     if (error) throw error;
+    if (window.blink.authWindow) {
+      const landed = await window.blink.authWindow(sbUrl(data.url));
+      if (landed) await finishSignIn(landed);
+      return;
+    }
     window.blink.open(sbUrl(data.url));
     return;
   }
@@ -402,6 +488,17 @@ export async function signInGoogle() {
 export async function signInGoogleToken(token, nonce) {
   const { error } = await cloud.auth.signInWithIdToken({ provider: 'google', token, nonce });
   if (error) throw error;
+}
+
+// Telegram: the widget's signed user (lib/tgsignin.js) → session. The desktop app opens the real browser instead.
+export async function signInTelegramUser(user) {
+  const hash = await telegramToken(user);
+  const { error } = await cloud.auth.verifyOtp({ token_hash: hash, type: 'magiclink' });
+  if (error) throw error;
+}
+
+export function signInTelegramDesktop() {
+  window.blink.open(SITE + '?tgsignin=desktop');
 }
 
 export async function signOut() {
@@ -496,7 +593,8 @@ export async function sharePlaylist(p) {
   return shareLink(c);
 }
 
-export const shareLink = (c) => `${SITE}?playlist=${c}`;
+// blinkmusic.cc/p/<code>: opens with a preview card (server/shareRoute.js); the old ?playlist=<code> keeps working.
+export const shareLink = (c) => `${SITE}p/${c}`;
 
 // A track link with a preview card (server/shareRoute.js). Title, artist and cover ride along for
 // sources the server can't look up by id.
@@ -508,6 +606,34 @@ export function trackLink(t) {
   if (/^\d{1,15}$/.test(id) || /^b:[0-9a-f-]{36}$/.test(id)) return `${SITE}t/${encodeURIComponent(id)}`;
   const q = new URLSearchParams({ n: t.title || '', a: t.artist || '' });
   return `${SITE}t/${encodeURIComponent(id)}?${q}`;
+}
+
+// The short, tidy link for a track: blinkmusic.cc/t/Xk3p9aQ. The server keeps the title, artist and cover
+// behind the code (same track → same code). Numeric Apple ids are short already; if the server can't be
+// reached the long form above still works.
+const shortLinks = new Map();
+export async function shortTrackLink(t) {
+  const id = String(t.id);
+  if (/^\d{1,15}$/.test(id)) return trackLink(t);
+  if (shortLinks.has(id)) return shortLinks.get(id);
+  try {
+    const base = (import.meta.env.VITE_MEDIA_URL || SITE).replace(/\/$/, '');
+    const r = await fetch(`${base}/api/share/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title: t.title || '', artist: t.artist || '', artwork: t.artwork || '' }),
+      signal: AbortSignal.timeout(3500),
+    });
+    const j = r.ok ? await r.json() : null;
+    if (j && /^[A-Za-z0-9]{7}$/.test(j.code || '')) {
+      const url = `${SITE}t/${j.code}`;
+      shortLinks.set(id, url);
+      return url;
+    }
+  } catch {
+    /* offline or an older server: the long link */
+  }
+  return trackLink(t);
 }
 
 // The owner's share of this playlist, if it is shared: { code } or null.

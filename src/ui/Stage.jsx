@@ -12,6 +12,7 @@ import { openStory } from './StoryCard.jsx';
 import { shareTrack } from './share.js';
 import { artistPhoto } from '../lib/photos.js';
 import { Comments } from './Profile.jsx';
+import { proxied, scaleSc, coverFallback } from '../lib/img.js';
 import Shot from './Shot.jsx';
 import { parseTtml } from '../lib/ttml.js';
 import { translateLines } from '../lib/translate.js';
@@ -392,7 +393,7 @@ export function useIdle(active, ms = 2500) {
       clearTimeout(t);
       t = setTimeout(() => setIdle(true), ms);
     };
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel'];
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'touchmove', 'touchend', 'pointerdown', 'wheel'];
     events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
     wake();
     return () => {
@@ -506,7 +507,7 @@ export default function Stage() {
   // with a small track pill at the bottom); under it the track, the progress, the controls and a
   // row of repeat / text / shuffle.
   if (narrow) {
-    const scaleArt = (u, s) => !u ? '' : /\/\d+x\d+bb\.jpg$/.test(u) ? u.replace(/\/\d+x\d+bb\.jpg$/, `/${s}x${s}bb.jpg`) : /\/\d+x\d+$/.test(u) ? u.replace(/\/\d+x\d+$/, `/${s}x${s}`) : u;
+    const scaleArt = (u, s) => !u ? '' : /\/\d+x\d+bb\.jpg$/.test(u) ? u.replace(/\/\d+x\d+bb\.jpg$/, `/${s}x${s}bb.jpg`) : /\/\d+x\d+$/.test(u) ? u.replace(/\/\d+x\d+$/, `/${s}x${s}`) : scaleSc(u, s);
     const cover = scaleArt(track.artwork || '', 1000);
     const textOn = tab === 'lyrics' && hasLyrics;
     const big = full && textOn;
@@ -517,7 +518,7 @@ export default function Stage() {
     };
     return (
       <motion.div
-        className={'stage pstage' + (big ? ' full' : '')}
+        className={'stage pstage' + (big ? ' full' : '') + (idle ? ' idle' : '')}
         initial={{ opacity: 0, y: 48 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 48, transition: { duration: 0.25, ease: [0.4, 0, 1, 1] } }}
@@ -526,10 +527,11 @@ export default function Stage() {
       >
         <div className="ps-bg" aria-hidden="true">
           <AnimatePresence initial={false}>
-            <motion.img key={track.id} src={cover} alt="" draggable={false} decoding="async" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.9, ease: [0.23, 1, 0.32, 1] }} />
+            <motion.img key={track.id} src={proxied(cover)} {...coverFallback(cover)} alt="" draggable={false} decoding="async" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.9, ease: [0.23, 1, 0.32, 1] }} />
           </AnimatePresence>
         </div>
         <div className="ps-shade" aria-hidden="true" />
+        <Shot track={track} stage idle={idle} />
 
         <div className="ps-top">
           <button className="icon-btn" title="Свернуть" onClick={() => store.set({ stage: false })}>
@@ -581,7 +583,7 @@ export default function Stage() {
           ) : (
             <div className="ps-art">
               <AnimatePresence mode="popLayout" initial={false}>
-                <motion.img key={track.id} src={cover} alt="" draggable={false} decoding="async" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }} />
+                <motion.img key={track.id} src={proxied(cover)} {...coverFallback(cover)} alt="" draggable={false} decoding="async" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }} />
               </AnimatePresence>
             </div>
           )}
@@ -589,7 +591,7 @@ export default function Stage() {
 
         {big ? (
           <div className="ps-pill" role="button" tabIndex={0} onClick={(e) => !e.target.closest('button') && setFull(false)}>
-            <img src={track.artwork} alt="" draggable={false} />
+            <img src={proxied(scaleSc(track.artwork, 100))} {...coverFallback(scaleSc(track.artwork, 100))} alt="" draggable={false} />
             <div className="ps-name">
               <div className="ps-title">{track.title}</div>
               <div className="ps-artist">{track.artist}</div>
@@ -600,7 +602,7 @@ export default function Stage() {
           <>
             <div className="ps-meta">
               <button className="ps-thumb" onClick={() => track.artistId && (store.set({ stage: false }), go('artist', { id: track.artistId }))} title={track.artist}>
-                <img src={photo || track.artwork} alt="" draggable={false} decoding="async" />
+                <img src={proxied(photo || scaleSc(track.artwork, 100))} {...coverFallback(photo || scaleSc(track.artwork, 100))} alt="" draggable={false} decoding="async" />
               </button>
               <div className="ps-name">
                 <div className="ps-title">{track.title}</div>
@@ -622,7 +624,7 @@ export default function Stage() {
 
             <div className="ps-ctl">
               {wave || flow ? (
-                <button className="icon-btn" title="Не то: больше такое не ставить" onClick={() => { notThis(track); next(); toast('Понял, такое больше не ставлю'); }}>
+                <button className="icon-btn" title="Не моё: больше такое не ставить" onClick={() => { notThis(track); next(); toast('Не моё, понял: такое больше не ставлю'); }}>
                   <Icon name="thumbDown" size={22} />
                 </button>
               ) : (
@@ -666,6 +668,7 @@ export default function Stage() {
       transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
       {...swipe}
     >
+      <Shot track={track} stage idle={idle} />
       <div className="ambient lit">
         <div className="blob a" />
         <div className="blob b" />
@@ -737,8 +740,8 @@ export default function Stage() {
         </div>
         <div className="right">
           {(wave || flow) && (
-            <button className="fs-skip" title="Больше такое не ставить во «Вспышке»" onClick={() => { notThis(track); next(); toast('Понял, такое больше не ставлю'); }}>
-              <Icon name="thumbDown" size={16} /> Не то
+            <button className="fs-skip" title="Больше такое не ставить во «Вспышке»" onClick={() => { notThis(track); next(); toast('Не моё, понял: такое больше не ставлю'); }}>
+              <Icon name="thumbDown" size={16} /> Не моё
             </button>
           )}
           <button className={'icon-btn' + (liked ? ' on' : '')} title="Любимое (L)" onClick={() => toggleLike(track)}>

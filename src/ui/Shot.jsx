@@ -4,7 +4,7 @@ import { shotFor } from '../lib/player.js';
 
 // A short looping video of the track (Yandex «видеошот») drawn over its cover while it plays.
 // Quiet failure: no video, a slow one or an error leaves the plain cover as it was.
-export default function Shot({ track }) {
+export default function Shot({ track, stage = false, idle = false }) {
   const [src, setSrc] = useState('');
   const [on, setOn] = useState(false);
   const playing = useStore((s) => s.status === 'playing');
@@ -28,7 +28,7 @@ export default function Shot({ track }) {
     if (!v) return;
     if (playing) v.play().catch(() => {});
     else v.pause();
-  }, [playing, src]);
+  }, [playing, src, idle]);
   if (!src) return null;
-  return <video ref={el} className={'shot' + (on ? ' on' : '')} src={src} muted loop playsInline autoPlay preload="auto" disablePictureInPicture onCanPlay={() => setOn(true)} onError={() => setSrc('')} />;
+  return <video ref={el} className={'shot' + (stage ? ' stage-shot' : '') + (on ? ' on' : '')} src={src} muted loop playsInline autoPlay preload="auto" disablePictureInPicture onCanPlay={() => { setOn(true); if (playing) el.current && el.current.play().catch(() => {}); }} onError={() => setSrc('')} />;
 }

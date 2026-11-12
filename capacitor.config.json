@@ -2,6 +2,33 @@
   "appId": "app.blink.player",
   "appName": "Blink",
   "webDir": "dist",
-  "server": { "url": "https://blinkmusic.cc", "cleartext": false },
-  "ios": { "contentInset": "never", "backgroundColor": "#0d0c10" }
+  "backgroundColor": "#0d0c10",
+  "loggingBehavior": "production",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0d0c10",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK",
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 180,
+      "backgroundColor": "#0d0c10",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": false,
+      "splashImmersive": false
+    },
+    "CapacitorHttp": {
+      "enabled": false
+    }
+  },
+  "appendUserAgent": "BlinkApp"
 }

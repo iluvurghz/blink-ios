@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import '../electron/screens/dotword.js';
 import { launchFeel } from './lib/haptic.js';
+import { renderTelegramButton } from './lib/tgsignin.js';
 import { renderGoogleButton, gisUsable, inAppBrowser, warmGis } from './lib/gsignin.js';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import Icon from './ui/Icon.jsx';
@@ -15,29 +17,31 @@ import { refreshSupport } from './lib/support.js';
 import { refreshPlus, usePlus } from './lib/plus.js';
 import { BlinkArtist, MyPage } from './ui/Profile.jsx';
 import { store, useStore, go, goBack, toggleLike, addToPlaylist, createPlaylist, removeFromPlaylist, toast } from './lib/store.js';
+import { addToRoomQueue } from './lib/together.js';
 import { playTrack, toggle, next, prev, seek, playNext, addToQueue, removeFromQueue, setVolume, initMedia, playFiles } from './lib/player.js';
 import { clock } from './lib/store.js';
-import { paletteFor, DEFAULT_PALETTE } from './lib/color.js';
+import { paletteFor, DEFAULT_PALETTE, WINTER_PALETTE } from './lib/color.js';
 import { checkKey, lookupTracks } from './lib/api.js';
-import { isDesktop, signIn, signUp, signInGoogle, signInGoogleToken, signOut, fetchStats, reloadUser, fetchShared, listDevices, revokeDevice } from './lib/cloud.js';
+import { isDesktop, isPc, signIn, signUp, signInGoogle, signInGoogleToken, signInTelegramUser, signInTelegramDesktop, signOut, fetchStats, reloadUser, fetchShared, listDevices, revokeDevice } from './lib/cloud.js';
 import { uploadAvatar, saveName as saveNickname } from './lib/catalog.js';
 import { plural, Cover, Switch } from './ui/common.jsx';
 import StoryCard, { openStory } from './ui/StoryCard.jsx';
 import { shareTrack } from './ui/share.js';
 import InstallHint from './ui/InstallHint.jsx';
 import TogetherSheet from './ui/Together.jsx';
+import FriendsSheet from './ui/Friends.jsx';
 import ImportSheet from './ui/Import.jsx';
 import StatusSheet, { StatusGlyph } from './ui/StatusSheet.jsx';
 import { runStatus } from './lib/status.js';
 import { syncRelay } from './lib/relay.js';
-import IslandTab, { useIslandAutostart } from './ui/IslandTab.jsx';
 import GameSwitch from './ui/GameSwitch.jsx';
+import Snow from './ui/Snow.jsx';
 import { switchGame, resumeAfterSwitch } from './lib/gamemode.js';
 import { markAi } from './lib/aiFilter.js';
 import { saveTrack, removeSaved, unqueue, savedBytes, clearSaved } from './lib/offline.js';
 
 import { humanError } from './lib/errors.js';
-import { proxied } from './lib/img.js';
+import { proxied, scaleSc, coverFallback } from './lib/img.js';
 const ease = [0.23, 1, 0.32, 1];
 
 function useMaximized() {
@@ -49,14 +53,14 @@ function useMaximized() {
   return max;
 }
 
-// iPhone: a small Blink mark in the status-bar row, right where the Dynamic Island or the notch is.
-// In use the island covers it; on a screenshot it shows, like other music apps do. Drawn only where
+// iPhone: a small Blink mark in the status-bar row, right where the notch is.
+// In use the notch covers it; on a screenshot it shows, like other music apps do. Drawn only where
 // the page reaches under the status bar (the home-screen app); elsewhere its row has no height.
-function IslandMark() {
+function StatusMark() {
   const on = useStore((s) => s.settings.brandMark !== false);
   if (!on) return null;
   return (
-    <div className="island-mark" aria-hidden="true">
+    <div className="status-mark" aria-hidden="true">
       <span>
         b<i />
       </span>
@@ -162,7 +166,7 @@ function TitleBar() {
           <Icon name="settings" size={19} />
         </button>
         <AccountButton />
-        {isDesktop && <div className="winctl">
+        {isPc && <div className="winctl">
           <button title="Свернуть" onClick={() => window.blink.minimize()}>
             <Icon name="min" size={16} stroke={1.5} />
           </button>
@@ -185,7 +189,7 @@ function Avatar({ user, big }) {
   useEffect(() => setBad(false), [user.avatar]);
   return (
     <span className={'avatar on' + (big ? ' big' : '') + (plus ? ' plus' : '')}>
-      {user.avatar && !bad ? <img src={proxied(user.avatar)} alt="" referrerPolicy="no-referrer" decoding="async" onError={() => setBad(true)} /> : (user.name || '?').slice(0, 1).toUpperCase()}
+      {user.avatar && !bad ? <img src={proxied(user.avatar)} alt="" referrerPolicy="no-referrer" decoding="async" onError={() => setBad(true)} /> : (user.name || user.email || 'B').slice(0, 1).toUpperCase()}
     </span>
   );
 }
@@ -270,9 +274,19 @@ const AUTH_ERRORS = {
 
 // On the site Google's own button signs in right on blinkmusic.cc (lib/gsignin.js); the app, the
 // iPhone home-screen app and a failed load keep Blink's button and the redirect way.
+// Google's own button needs the site's origin registered in Google Cloud (else origin_mismatch), so it is
+// opt-in (?gis=1 or localStorage blink.gis=1); by default the redirect button below is used.
+function gisOptIn() {
+  try {
+    return localStorage.getItem('blink.gis') === '1' || new URLSearchParams(location.search).get('gis') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function GoogleSignIn({ onDone, onError }) {
   const box = useRef(null);
-  const [gis, setGis] = useState(!isDesktop && gisUsable() && !inAppBrowser());
+  const [gis, setGis] = useState(!isDesktop && gisUsable() && !inAppBrowser() && gisOptIn());
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!gis) return;
@@ -287,7 +301,8 @@ function GoogleSignIn({ onDone, onError }) {
       box.current.offsetWidth - 12,
     ).catch(() => setGis(false));
   }, [gis]);
-  if (inAppBrowser())
+  // An app (PC or phone) signs in through the real browser, so its own WebView doesn't count as an in-app browser.
+  if (!isDesktop && inAppBrowser())
     return <div className="field-err">Google не пускает из встроенного браузера. Откройте blinkmusic.cc в Safari или Chrome, или войдите по почте ниже.</div>;
   if (gis) return <div ref={box} className="gsi-box" />;
   return (
@@ -310,6 +325,36 @@ function GoogleSignIn({ onDone, onError }) {
           </svg>
           Продолжить с Google
         </button>
+  );
+}
+
+// Telegram: in the app the real browser does it (the widget won't run in app windows); on the site the
+// button opens Telegram's own widget right under it.
+function TelegramSignIn({ onDone, onError }) {
+  const box = useRef(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    renderTelegramButton(box.current, (user) =>
+      signInTelegramUser(user).then(
+        () => onDone(),
+        () => onError('Не получилось войти через Telegram, попробуйте ещё раз'),
+      ),
+    ).catch(() => {
+      setOpen(false);
+      onError('Telegram не загрузился. Проверьте интернет или войдите по почте.');
+    });
+  }, [open]);
+  if (!isDesktop && inAppBrowser()) return null;
+  if (open) return <div ref={box} className="tg-box" />;
+  return (
+    <button className="btn google" onClick={() => (isDesktop ? signInTelegramDesktop() : setOpen(true))}>
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#2AABEE" d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24z" />
+        <path fill="#fff" d="M5.4 11.9c3.5-1.5 5.8-2.5 7-3 3.3-1.4 4-1.6 4.4-1.6.1 0 .3 0 .4.1.1.1.2.2.2.3v.4c-.2 2-.9 6.6-1.3 8.7-.2.9-.5 1.2-.8 1.2-.7.1-1.2-.5-1.9-.9-1-.7-1.6-1.1-2.6-1.8-1.1-.8-.4-1.2.2-1.9.2-.2 2.9-2.7 3-2.9 0 0 0-.1-.1-.2h-.2c-.1 0-1.5 1-4.3 2.9-.4.3-.8.4-1.1.4-.4 0-1.1-.2-1.7-.4-.7-.2-1.3-.3-1.2-.7 0-.2.3-.4.8-.6z" />
+      </svg>
+      Продолжить с Telegram
+    </button>
   );
 }
 
@@ -394,6 +439,8 @@ function AccountSheet({ onClose }) {
       <h2>{reason === 'play' ? 'Войдите, чтобы слушать' : reason === 'save' ? 'Войдите, чтобы сохранять музыку' : mode === 'in' ? 'С возвращением' : 'Создайте аккаунт'}</h2>
       <p>{reason ? 'Это бесплатно и займёт полминуты. Любимое и плейлисты будут с вами в приложении и на сайте.' : 'Любимое, плейлисты и история будут одинаковыми в приложении и на сайте.'}</p>
       <GoogleSignIn onDone={onClose} onError={(err) => setState({ err })} />
+      <div style={{ height: 10 }} />
+      <TelegramSignIn onDone={onClose} onError={(err) => setState({ err })} />
       <div className="or">или по почте</div>
       <form onSubmit={submit} className="auth-form">
         {mode === 'up' && <input placeholder="Как вас зовут" value={form.name} onChange={set('name')} autoComplete="name" />}
@@ -413,8 +460,18 @@ function AccountSheet({ onClose }) {
 
 function Ambient() {
   const art = useStore((s) => s.track && s.track.artwork);
+  const winter = useStore((s) => s.winterTheme);
   useEffect(() => {
     let alive = true;
+    if (winter) {
+      const root = document.documentElement.style;
+      root.setProperty('--gA', WINTER_PALETTE.glowA);
+      root.setProperty('--gB', WINTER_PALETTE.glowB);
+      root.setProperty('--gC', WINTER_PALETTE.glowC);
+      root.setProperty('--accent', WINTER_PALETTE.accent);
+      root.setProperty('--accent-ink', WINTER_PALETTE.accentInk);
+      return () => { alive = false; };
+    }
     paletteFor(art).then((p) => {
       if (!alive) return;
       const root = document.documentElement.style;
@@ -427,7 +484,7 @@ function Ambient() {
     return () => {
       alive = false;
     };
-  }, [art]);
+  }, [art, winter]);
   return (
     <div className="ambient">
       <div className="blob a" />
@@ -520,6 +577,7 @@ function Menu() {
   const liked = useStore((s) => !!t && s.likes.some((x) => x.id === t.id));
   const saved = useStore((s) => !!t && (s.saved || []).some((x) => x.id === t.id));
   const queued = useStore((s) => !!t && !!s.dl && s.dl.ids.includes(t.id));
+  const inTogether = useStore((s) => !!s.together);
   const done = (fn) => () => {
     fn();
     store.set({ menu: null });
@@ -555,7 +613,7 @@ function Menu() {
           {phone && (
             <div className="menu-head">
               <span className="menu-grip" />
-              <img src={t.artwork} alt="" draggable={false} />
+              <img src={proxied(scaleSc(t.artwork, 100))} {...coverFallback(scaleSc(t.artwork, 100))} alt="" draggable={false} />
               <div>
                 <b>{t.title}</b>
                 <span>{t.artist}</span>
@@ -570,6 +628,11 @@ function Menu() {
               <button onClick={done(() => addToQueue(t))}>
                 <Icon name="queue" size={17} /> Добавить в очередь
               </button>
+              {inTogether && (
+                <button onClick={done(() => addToRoomQueue(t))}>
+                  <Icon name="queue" size={17} /> В очередь комнаты
+                </button>
+              )}
               <hr />
               <button onClick={done(() => toggleLike(t))}>
                 <Icon name={liked ? 'heartFill' : 'heart'} size={17} /> {liked ? 'Убрать из любимого' : 'В любимое'}
@@ -885,13 +948,15 @@ function VersionRow() {
 }
 
 // "Слушать вместе" from a friend's Discord status: same track, same moment.
+const SHORT_CODE = /^[2-9a-km-np-zA-HJ-NP-Z]{7}$/;
 function parseListen(search) {
   const p = new URLSearchParams(search);
   const id = p.get('listen');
   if (id) return { id, t: Number(p.get('t')) || 0, at: Number(p.get('at')) || Date.now() };
   // A shared track (?track=, or /t/<id> when the site is served without the preview route).
   const track = p.get('track') || decodeURIComponent((location.pathname.match(/^\/t\/([^/]+)/) || [])[1] || '');
-  if (!track) return null;
+  // A short code (blinkmusic.cc/t/Xk3p9aQ) carries nothing itself: useListenLinks asks the server what it is.
+  if (!track || (!p.get('track') && SHORT_CODE.test(track))) return null;
   return { id: track, shared: true, t: 0, at: Date.now(), title: p.get('n') || '', artist: p.get('a') || '', artwork: p.get('c') || '' };
 }
 
@@ -902,7 +967,7 @@ function useListenLinks() {
     const shared = new URLSearchParams(location.search).get('playlist') || pathCode;
     if (shared) {
       store.set({ sharedCode: shared, sheet: 'shared' });
-      history.replaceState(null, '', location.pathname);
+      history.replaceState(null, '', pathCode ? '/' : location.pathname);
     }
     if (window.blink.onDeepLink)
       window.blink.onDeepLink((url) => {
@@ -911,16 +976,46 @@ function useListenLinks() {
         if (c) store.set({ sharedCode: c, sheet: 'shared' });
       });
     // «Слушать вместе» room links: ?together=<code>, blink://together?together=<code>.
-    const room = new URLSearchParams(location.search).get('together');
+    // (blinkmusic.cc/r/<code> is the same room link with a preview card.)
+    const roomPath = (location.pathname.match(/^\/r\/([A-Za-z0-9_-]+)/) || [])[1];
+    const room = new URLSearchParams(location.search).get('together') || roomPath;
     if (room) {
       store.set({ togetherInvite: room, sheet: 'together' });
-      history.replaceState(null, '', location.pathname);
+      history.replaceState(null, '', roomPath ? '/' : location.pathname);
+    }
+    // A public profile: blinkmusic.cc/u/<link name>, or ?artist=<link name or id>.
+    const who = new URLSearchParams(location.search).get('artist') || (location.pathname.match(/^\/u\/([A-Za-z0-9_.-]+)/) || [])[1];
+    if (who) {
+      go('bartist', { id: who.toLowerCase() });
+      history.replaceState(null, '', '/');
+    }
+    // Short track link opened on the site without the preview page in between.
+    const shortCode = (location.pathname.match(/^\/t\/([^/]+)$/) || [])[1];
+    if (shortCode && SHORT_CODE.test(shortCode) && !new URLSearchParams(location.search).get('track')) {
+      const base = (import.meta.env.VITE_MEDIA_URL || 'https://blinkmusic.cc').replace(/\/$/, '');
+      fetch(`${base}/api/share/track/${shortCode}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((m) => m && store.set({ listen: { id: m.id, shared: true, t: 0, at: Date.now(), title: m.title, artist: m.artist, artwork: m.artwork }, sheet: 'listen' }))
+        .catch(() => {});
+      history.replaceState(null, '', '/');
     }
     if (window.blink.onDeepLink)
       window.blink.onDeepLink((url) => {
         if (!url.startsWith('blink://together')) return;
         const c = new URLSearchParams(url.slice(url.indexOf('?'))).get('together');
         if (c) store.set({ togetherInvite: c, sheet: 'together' });
+      });
+    // Friend invite links: ?friend=<code>, blink://friend?friend=<code>.
+    const friend = new URLSearchParams(location.search).get('friend');
+    if (friend) {
+      store.set({ friendInvite: friend, sheet: 'friends' });
+      history.replaceState(null, '', location.pathname);
+    }
+    if (window.blink.onDeepLink)
+      window.blink.onDeepLink((url) => {
+        if (!url.startsWith('blink://friend')) return;
+        const c = new URLSearchParams(url.slice(url.indexOf('?'))).get('friend');
+        if (c) store.set({ friendInvite: c, sheet: 'friends' });
       });
     // mp3/wav opened with Blink («Открыть с помощью» / double click).
     if (window.blink.onOpenFiles) window.blink.onOpenFiles(playFiles);
@@ -1185,7 +1280,39 @@ function GameTab({ on }) {
           <li>Медиаклавиши и трей работают, музыка продолжится с того же места</li>
         </ul>
       </div>
+      <ObsCard />
     </>
+  );
+}
+
+// OBS «Browser source»: a page with the current track on a transparent background (electron/overlay).
+function ObsCard() {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (window.blink && window.blink.overlayUrl) window.blink.overlayUrl().then((u) => setUrl(u || ''), () => setUrl(''));
+    else setUrl('');
+  }, []);
+  if (!url) return null;
+  const copy = () => {
+    const done = () => toast('Адрес скопирован');
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, done);
+  };
+  return (
+    <div className="game-card obs-card">
+      <div className="gc-head">
+        <div>
+          <div className="k">Трек в OBS</div>
+          <div className="d">Добавьте источник «Браузер» в OBS, вставьте адрес и задайте размер 520×150. Фон прозрачный, на экране только обложка, название, артист и полоска трека</div>
+        </div>
+      </div>
+      <div className="obs-row">
+        <input readOnly value={url} onFocus={(e) => e.target.select()} />
+        <button className="btn ghost" onClick={copy}>
+          Копировать
+        </button>
+      </div>
+      <div className="obs-tip">Без подложки: добавьте <code>?plate=0</code> в конец адреса, крупнее: <code>?scale=1.3</code>, справа: <code>?align=right</code></div>
+    </div>
   );
 }
 
@@ -1281,7 +1408,7 @@ function SupportButton({ active }) {
 }
 
 // Old links (go('settings', { tab })) still land somewhere sensible.
-const OLD_TABS = { devices: 'security', plus: null, sound: 'params', game: 'params', island: 'params' };
+const OLD_TABS = { devices: 'security', plus: null, sound: 'params', game: 'params' };
 
 function SettingsPage() {
   const user = useStore((x) => x.user);
@@ -1416,6 +1543,12 @@ function SettingsPage() {
           <a className="powered" href="https://spherical.media" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://spherical.media'))}>
             При поддержке <b>Spherical Media</b>
           </a>
+          <div className="tg-links">
+            <a href="https://t.me/blinkmusic_live" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/blinkmusic_live'))}>Telegram-канал</a>
+            <a href="https://t.me/blinkmusic_commits" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/blinkmusic_commits'))}>Тех. ТГК</a>
+            <a href="https://t.me/SYLQENMNGR" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/SYLQENMNGR'))}>Менеджер</a>
+          </div>
+          <div className="copyright">© 2026 <b>SYLQEN</b> · разработчик и правообладатель</div>
         </>
       )}
       </motion.div>
@@ -1423,7 +1556,7 @@ function SettingsPage() {
   );
 }
 
-// «Параметры»: how the app plays and behaves. Blink Island sits folded under «Дополнительно».
+// «Параметры»: how the app plays and behaves. 
 function ParamsPage() {
   const s = useStore((x) => x.settings);
   const set = (patch) => store.set({ settings: { ...store.get().settings, ...patch } });
@@ -1432,7 +1565,7 @@ function ParamsPage() {
       <PrefsHead page="params" />
       <div className="label set-label">Воспроизведение</div>
       <CrossfadeRow s={s} set={set} />
-      {isDesktop && (
+      {isPc && (
         <>
           <div className="label set-label">Окно</div>
           <div className="set-row">
@@ -1453,7 +1586,7 @@ function ParamsPage() {
           )}
         </>
       )}
-      {!isDesktop && (
+      {!isPc && (
         <>
           <div className="label set-label">Экран</div>
           <div className="set-row">
@@ -1474,13 +1607,6 @@ function ParamsPage() {
       )}
       <div className="label set-label">Игры</div>
       <GameTab on={!!s.game} />
-      <details className="set-more">
-        <summary>
-          Дополнительно <Icon name="down" size={16} />
-        </summary>
-        <div className="label set-label">Blink Island</div>
-        <IslandTab on={!!s.islandAuto} set={set} />
-      </details>
     </div>
   );
 }
@@ -1516,7 +1642,7 @@ function Sheets() {
   const close = () => store.set({ sheet: null, authReason: null });
   const sheetDrag = useRef(null);
   useEffect(() => {
-    if (user || isDesktop || !gisUsable()) return;
+    if (user || isDesktop || !gisUsable() || !gisOptIn()) return;
     const t = setTimeout(warmGis, 3500);
     return () => clearTimeout(t);
   }, [!!user]);
@@ -1547,7 +1673,7 @@ function Sheets() {
             <button className="icon-btn x" onClick={close} title="Закрыть">
               <Icon name="close" size={18} />
             </button>
-            {sheet === 'key' ? <KeySheet onClose={close} /> : sheet === 'account' ? <AccountSheet onClose={close} /> : sheet === 'listen' ? <ListenSheet onClose={close} /> : sheet === 'import' ? <ImportSheet onClose={close} /> : sheet === 'status' ? <StatusSheet /> : sheet === 'shared' ? <SharedSheet onClose={close} /> : sheet === 'story' ? <StoryCard /> : sheet === 'together' ? <TogetherSheet onClose={close} /> : sheet === 'bug' ? <BugSheet /> : null}
+            {sheet === 'key' ? <KeySheet onClose={close} /> : sheet === 'account' ? <AccountSheet onClose={close} /> : sheet === 'listen' ? <ListenSheet onClose={close} /> : sheet === 'import' ? <ImportSheet onClose={close} /> : sheet === 'status' ? <StatusSheet /> : sheet === 'shared' ? <SharedSheet onClose={close} /> : sheet === 'story' ? <StoryCard /> : sheet === 'together' ? <TogetherSheet onClose={close} /> : sheet === 'friends' ? <FriendsSheet onClose={close} /> : sheet === 'bug' ? <BugSheet /> : null}
           </motion.div>
         </motion.div>
       )}
@@ -1555,7 +1681,14 @@ function Sheets() {
   );
 }
 
+// The picture shown while the app opens. On the web and on an iPhone's home screen it is «blink» in dots
+// (electron/screens/dotword.js; the launch image of the home-screen app is this very picture, finished, so
+// the intro starts lit). The desktop app keeps its own look: the launch window, then the plain mark.
 function Intro({ onDone }) {
+  return isPc ? <MarkIntro onDone={onDone} /> : <DotsIntro onDone={onDone} />;
+}
+
+function MarkIntro({ onDone }) {
   useEffect(() => {
     const t = setTimeout(onDone, 1250);
     return () => clearTimeout(t);
@@ -1571,6 +1704,34 @@ function Intro({ onDone }) {
         blink
         <motion.span className="dot" initial={{ scaleY: 1 }} animate={{ scaleY: [1, 1, 0.1, 1] }} transition={{ duration: 0.9, times: [0, 0.6, 0.78, 1], delay: 0.2 }} />
       </motion.div>
+    </motion.div>
+  );
+}
+
+function DotsIntro({ onDone }) {
+  const canvas = useRef(null);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => {
+    let dw = null;
+    let timer = 0;
+    let dead = false;
+    const lit = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+    Promise.race([document.fonts.load('600 80px Unbounded'), new Promise((r) => setTimeout(r, 500))]).then(() => {
+      if (dead || !canvas.current) return;
+      dw = window.DotWord.create(canvas.current, { w: window.innerWidth, h: window.innerHeight, weight: 600, lit });
+      dw.start();
+      timer = setTimeout(() => dw.outro(() => done.current()), lit ? 400 : 1150);
+    });
+    return () => {
+      dead = true;
+      clearTimeout(timer);
+      if (dw) dw.destroy();
+    };
+  }, []);
+  return (
+    <motion.div className="intro" exit={{ opacity: 0, transition: { duration: 0.3 } }}>
+      <canvas ref={canvas} />
     </motion.div>
   );
 }
@@ -1719,7 +1880,6 @@ export default function App() {
   useKeys();
   useUpdates();
   useListenLinks();
-  useIslandAutostart(loaded);
   const uid = useStore((s) => s.user && s.user.id);
   const hadUid = useRef(null);
   useEffect(() => {
@@ -1744,6 +1904,10 @@ export default function App() {
   useEffect(() => {
     if (loaded) syncRelay();
   }, [loaded]);
+  const winter = useStore((s) => s.winterTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = winter ? 'winter' : '';
+  }, [winter]);
   useEffect(() => {
     if (!loaded) return;
     initMedia();
@@ -1759,6 +1923,7 @@ export default function App() {
   return (
     <MotionConfig reducedMotion={game ? 'always' : 'user'}>
       <Ambient />
+      <Snow />
       {loaded && <View />}
       {loaded && <FlashHost />}
       <TitleBar />
@@ -1766,7 +1931,7 @@ export default function App() {
       <OfflineBanner />
       <Capsule />
       <AnimatePresence>{stage && <Stage />}</AnimatePresence>
-      <IslandMark />
+      <StatusMark />
       <YtHost />
       <Menu />
       <Sheets />

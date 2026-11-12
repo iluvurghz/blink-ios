@@ -5,7 +5,7 @@ import { splitArtists, findArtistId } from '../lib/api.js';
 import { playTrack } from '../lib/player.js';
 import { hasRelay, relayOn } from '../lib/relay.js';
 import { unqueue } from '../lib/offline.js';
-import { proxied } from '../lib/img.js';
+import { proxied, scaleSc } from '../lib/img.js';
 
 // Seconds (or a "3:41" string from some sources) as m:ss; anything unknown shows as 0:00.
 export const secs = (v) => {
@@ -50,7 +50,8 @@ export function Cover({ src, size = 600, className = '', style, alt = '' }) {
     if (/\/\d+x\d+bb\.jpg$/.test(u)) return u.replace(/\/\d+x\d+bb\.jpg$/, `/${s}x${s}bb.jpg`);
     // Yandex: .../100x100 → .../1000x1000 (1000 is its largest square; 1200 answers 404)
     if (/\/\d+x\d+$/.test(u)) return u.replace(/\/\d+x\d+$/, `/${Math.min(s, 1000)}x${Math.min(s, 1000)}`);
-    return u;
+    // SoundCloud: ...-large.jpg → ...-t500x500.jpg
+    return scaleSc(u, s);
   };
   const base = src && !insecure ? scaleUrl(src, size) : '';
   // First try through Blink's server (fast, cached), then the original address, then once more.

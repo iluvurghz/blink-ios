@@ -1,5 +1,6 @@
 // All network goes through the main process (no CORS, retries, timeouts).
 import { sbUrl } from './sbroute.js';
+import { scaleSc } from './img.js';
 const bridge = window.blink;
 const SELF = (import.meta.env.VITE_MEDIA_URL || 'https://blinkmusic.cc').replace(/\/$/, '');
 
@@ -20,7 +21,8 @@ export function art(url, size = 600) {
   if (/\/\d+x\d+bb\.jpg$/.test(url)) return url.replace(/\/\d+x\d+bb\.jpg$/, `/${size}x${size}bb.jpg`);
   // Yandex: .../100x100 or .../1000x1000 → .../600x600
   if (/\/\d+x\d+$/.test(url)) return url.replace(/\/\d+x\d+$/, `/${size}x${size}`);
-  return url;
+  // SoundCloud: ...-large.jpg → ...-t500x500.jpg
+  return scaleSc(url, size);
 }
 
 function cleanAlbum(name = '') {

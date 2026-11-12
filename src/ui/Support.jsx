@@ -41,7 +41,6 @@ export function KeeperChip({ since, tier }) {
   const rung = cfg.tiers.find((t) => t.id === level) || cfg.tiers[0];
   return (
     <span className="keep-chip" data-tier={level} title={`${rung.name} · поддерживает Blink × Spherical с ${fmt(date)}`}>
-      <Lockup />
       {rung.name}
     </span>
   );
@@ -117,7 +116,7 @@ export default function SupportCard() {
       <div className="keep-ladder" style={{ '--n': tiers.length, '--fill': fill }}>
         {tiers.map((t) => (
           <div key={t.id} data-tier={t.id} className={'keep-rung' + (t.id <= now ? ' got' : '') + (t.id === now ? ' now' : '')}>
-            <i><img src={eye} alt="" /></i>
+            <i />
             <b>{t.name}</b>
             <small>от {rub(t.from)}</small>
           </div>
@@ -149,7 +148,6 @@ export default function SupportCard() {
         Разовый платёж через RollyPay, повторно ничего не списывается.
         {ok && after > now && (
           <span className="keep-chip" data-tier={after}>
-            <Lockup />
             {(tiers.find((t) => t.id === after) || tiers[0]).name}
           </span>
         )}

@@ -165,8 +165,9 @@ export default function Capsule() {
   const wave = useStore((s) => s.wave);
   const flow = useStore((s) => s.flow);
   const remoteFrom = useStore((s) => s.remoteFrom);
-  // On the home page «Вспышка» has its own big player, so the capsule steps aside.
-  const flashHome = useStore((s) => s.wave && s.view.name === 'home');
+  // The home page never carries the capsule: plain music has only the small pill there, and
+  // «Вспышка» is its own player.
+  const flashHome = useStore((s) => s.view.name === 'home');
   const together = useStore((s) => s.together);
   // The stage always opens on the lyrics, unless a button asks for another tab.
   const openStage = (tab) => store.set({ stage: true, stageTab: tab || 'lyrics' });
@@ -224,7 +225,7 @@ export default function Capsule() {
                 </AnimatePresence>
               </div>
               {(wave || flow) && (
-                <button className="icon-btn cap-skip" title="Не то: больше такое не ставить в потоке" onClick={() => { notThis(track); next(); toast('Понял, такое больше не ставлю'); }} style={{ flex: 'none' }}>
+                <button className="icon-btn cap-skip" title="Не моё: больше такое не ставить в потоке" onClick={() => { notThis(track); next(); toast('Не моё, понял: такое больше не ставлю'); }} style={{ flex: 'none' }}>
                   <Icon name="thumbDown" size={18} />
                 </button>
               )}

@@ -98,6 +98,59 @@ export async function searchApiblink(query) {
 }
 
 /**
+ * Search SoundCloud via APIBlink (server picks up the client_id itself; no user tokens).
+ * Returns array of { title, artist, duration, url, artwork, source } or [].
+ */
+export async function searchSoundcloud(query) {
+  try {
+    const headers = await authHeader();
+    const params = new URLSearchParams({ q: query });
+    const res = await fetch(`${MEDIA}/api/apiblink/soundcloud?${params}`, {
+      headers,
+      signal: AbortSignal.timeout(18000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.results || []).map((t) => ({
+      title: t.title,
+      artist: t.artist,
+      duration: t.duration || 0,
+      url: toAbsolute(t.streamUrl) || '',
+      artwork: t.artworkDirect || toAbsolute(t.artworkUrl) || null,
+      id: t.sourceId,
+      link: t.externalUrl || '',
+      source: 'soundcloud',
+    }));
+  } catch (e) {
+    console.warn('[apiblink] searchSoundcloud failed:', e.message);
+    return [];
+  }
+}
+
+/** VK audio (experiment; server returns [] unless the admin flag vkEnabled is on). */
+export async function searchVk(query) {
+  try {
+    const headers = await authHeader();
+    const params = new URLSearchParams({ q: query });
+    const res = await fetch(`${MEDIA}/api/apiblink/vk?${params}`, { headers, signal: AbortSignal.timeout(18000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.results || []).map((t) => ({
+      title: t.title,
+      artist: t.artist,
+      duration: t.duration || 0,
+      url: toAbsolute(t.streamUrl) || '',
+      artwork: t.artworkDirect || toAbsolute(t.artworkUrl) || null,
+      id: t.sourceId,
+      source: 'vk',
+    }));
+  } catch (e) {
+    console.warn('[apiblink] searchVk failed:', e.message);
+    return [];
+  }
+}
+
+/**
  * Find a 30-second Yandex Music preview URL for a track.
  * Used as the soundtrack for story card videos when iTunes preview is unavailable.
  * Returns a stream URL string or '' when not found.

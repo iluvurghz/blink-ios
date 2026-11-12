@@ -1,6 +1,6 @@
-// Game mode restarts Blink: the main process starts the light window (no GPU, see GameApp.jsx)
+// Game mode swaps the window in the same process (no restart): the main process opens the light window (no GPU, see GameApp.jsx)
 // or the full one. Whatever was playing picks up where it stopped.
-import { store, nowTime } from './store.js';
+import { store, nowTime, saveNow } from './store.js';
 import { playTrack } from './player.js';
 import { handOffDevice } from './cloud.js';
 
@@ -15,8 +15,15 @@ export function switchGame(game) {
   }
   handOffDevice();
   store.set({ settings: { ...s.settings, game }, gameSwitch: game });
+  // An older app restarts and reads the setting from disk: it has to get there before that, the usual save waits 1.2 s.
+  saveNow();
   // Let the transition play; an older app without relaunch just reloads the page.
-  setTimeout(() => (window.blink.relaunch ? window.blink.relaunch() : location.reload()), 1100);
+  setTimeout(() => {
+    const b = window.blink;
+    if (b.setGame) b.setGame(game);
+    else if (b.relaunch) b.relaunch();
+    else location.reload();
+  }, 1100);
 }
 
 export function resumeAfterSwitch() {

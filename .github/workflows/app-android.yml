@@ -1,0 +1,129 @@
+name: app-android
+
+# Blink для Android как на ПК: оболочка Capacitor со встроенной копией сайта (src/), работает и без интернета.
+on:
+  push:
+    branches: ["app/**"]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "electron/screens/**"
+      - "index.html"
+      - "vite.config.js"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - "android/**"
+      - "app-tools/**"
+      - ".github/workflows/app-android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: app-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  apk:
+    name: Сборка APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      name: ${{ steps.apk.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Пакеты
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Публичные ключи сайта
+        env:
+          BLINK_SUPABASE_ANON_KEY: ${{ secrets.BLINK_SUPABASE_ANON_KEY }}
+          BLINK_LASTFM_KEY: ${{ secrets.BLINK_LASTFM_KEY }}
+        run: python3 app-tools/site_env.py .env.production.local || echo "::warning::Ключ входа не найден: сборка без входа"
+      - name: Сайт
+        run: npx vite build
+      - name: Сайт внутрь приложения
+        run: npx cap sync android
+      - name: Сборка
+        working-directory: android
+        run: ./gradlew :app:assembleAlpha -PblinkBuild=${{ github.run_number }} --console=plain --stacktrace
+      - name: Имя файла
+        id: apk
+        run: |
+          src="$(ls android/app/build/outputs/apk/alpha/*.apk | head -n1)"
+          name="Blink-android-${{ github.run_number }}.apk"
+          cp "$src" "$name"
+          ls -la "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blink-android
+          path: ${{ steps.apk.outputs.name }}
+      - name: Свежая сборка на странице релизов
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app-android --cleanup-tag --yes || true
+          gh release create app-android "${{ steps.apk.outputs.name }}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для Android (как сайт), сборка ${{ github.run_number }}" \
+            --notes "Тестовая сборка: сайт Blink внутри приложения, работает и без интернета. Ставится поверх прошлых alpha. Ветка ${GITHUB_REF_NAME}, коммит ${GITHUB_SHA::7}."
+
+  emulator:
+    name: Эмулятор и снимки
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Blink-android
+          path: apk
+      - name: KVM для эмулятора
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Эмулятор, разделы, «назад» и режим полёта
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 app-tools/android_tour.py apk/${{ needs.apk.outputs.name }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-shots
+          path: shots
+          if-no-files-found: ignore
+      - name: Снимки на странице релизов
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(shots/android/*)
+          [ "${#files[@]}" -gt 0 ] || exit 0
+          gh release delete app-android-screens --cleanup-tag --yes || true
+          gh release create app-android-screens "${files[@]}" --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для Android: снимки из эмулятора, сборка ${{ github.run_number }}" \
+            --notes "Проверка сборки ${{ github.run_number }} (коммит ${GITHUB_SHA::7}), не установочный файл."

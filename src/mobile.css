@@ -89,72 +89,10 @@ button, a, [role='button'] { -webkit-tap-highlight-color: transparent; touch-act
   .phone-flash, .phone-flash body { overflow: hidden; overscroll-behavior: none; }
   .phone-flash .capsule-wrap { display: none; }
   .phone-flash .titlebar::before { background: transparent; border-color: transparent; backdrop-filter: none; }
-  .pf { position: fixed; inset: 0 0 calc(var(--tabbar) + var(--safe-b)); z-index: 1; overflow: hidden; isolation: isolate; background: #0b0a0d; display: grid; padding: calc(52px + var(--safe-t)) 22px 14px; }
-  .pf-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-  .pf-bg > img { position: absolute; inset: -12%; width: 124%; height: 124%; object-fit: cover; filter: blur(70px) saturate(1.7) brightness(0.55); }
   /* three soft glows in the cover's colours drifting slowly; their colours ease over when the track changes */
-  .pf-aura { position: absolute; inset: 0; filter: blur(64px); opacity: 0.85; }
-  .pf-aura i { position: absolute; border-radius: 50%; mix-blend-mode: screen; transition: background-color 1.6s ease; }
-  .pf-aura .a1 { width: 90vw; height: 90vw; left: -30vw; top: 4%; background-color: var(--gA); animation: pfDriftA 23s ease-in-out infinite alternate; }
-  .pf-aura .a2 { width: 80vw; height: 80vw; right: -32vw; top: 30%; background-color: var(--accent); opacity: 0.7; animation: pfDriftB 29s ease-in-out infinite alternate; }
-  .pf-aura .a3 { width: 100vw; height: 70vw; left: -10vw; bottom: -18%; background-color: var(--gB); animation: pfDriftC 34s ease-in-out infinite alternate; }
-  .pf:not(.live) .pf-aura { opacity: 0.6; }
-  .pf .pf-waves { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 55%; filter: blur(22px) saturate(1.3); opacity: 0.55; mix-blend-mode: screen; transition: opacity 1s ease; }
-  .pf.live:not(.on) .pf-waves { opacity: 0.3; }
   /* a vignette and a little grain so the colours read as light, not as a flat gradient */
-  .pf .pf-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  .pf-veil { position: absolute; inset: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E"); mix-blend-mode: overlay; }
-  .pf-aura ~ .pf-veil, .pf-waves ~ .pf-veil { background-image: radial-gradient(120% 80% at 50% 40%, transparent 40%, rgba(8, 7, 10, 0.75)), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"); }
-  @keyframes pfDriftA { to { transform: translate(28vw, 14vh) scale(1.15); } }
-  @keyframes pfDriftB { to { transform: translate(-30vw, -12vh) scale(0.9); } }
-  @keyframes pfDriftC { to { transform: translate(18vw, -10vh) scale(1.2); } }
-
-  .pf-body { min-height: 0; display: grid; align-content: center; justify-items: center; gap: 16px; text-align: center; }
-  .pf-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 32px; }
-  .pf-from { min-width: 0; font-weight: 600; font-size: 15px; color: rgba(238, 233, 226, 0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pf-from b { color: var(--bone); font-weight: 700; }
-  .pf-switch { flex: none; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 6px; border-radius: 999px; font-weight: 700; font-size: 13px; color: rgba(238, 233, 226, 0.6); background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.08); }
-  .pf-switch .knob { position: relative; width: 30px; height: 18px; border-radius: 9px; background: rgba(238, 233, 226, 0.2); transition: background 0.2s ease; }
-  .pf-switch .knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--bone); transition: transform 0.2s var(--ease-out); }
-  .pf-switch.on { color: var(--bone); }
-  .pf-switch.on .knob { background: var(--accent); }
-  .pf-switch.on .knob::after { transform: translateX(12px); }
-  .pf-brand { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: -0.04em; display: flex; align-items: baseline; opacity: 0.9; }
-  .pf .dot { width: 0.18em; height: 0.18em; border-radius: 50%; background: var(--accent); margin-left: 0.06em; animation: flashBlink 5s ease-in-out infinite; }
-  .pf-cover { position: relative; width: min(72vw, 38svh, 340px); aspect-ratio: 1; border-radius: 24px; overflow: hidden; touch-action: pan-y; margin-top: 8px; background: rgba(255, 255, 255, 0.04); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.8), 0 0 90px -10px color-mix(in srgb, var(--gA) 70%, transparent); transition: transform 0.4s var(--ease-out), box-shadow 1.2s ease; }
-  .pf.live:not(.on) .pf-cover { transform: scale(0.94); }
-  .pf-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .pf-meta { width: 100%; min-width: 0; margin-top: 6px; }
-  .pf-title { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 8vw, 34px); letter-spacing: -0.045em; line-height: 1.02; margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35); }
-  .pf-artist { margin-top: 8px; color: rgba(238, 233, 226, 0.62); font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pf-progress { width: 100%; }
-  .pf-progress .stage-scrub { grid-template-columns: 40px 1fr 40px; gap: 8px; color: rgba(238, 233, 226, 0.6); }
-  .pf-progress .progress .rail { height: 3px; background: rgba(238, 233, 226, 0.16); }
-  .pf-progress .progress .fill { background: var(--bone); }
-  .pf-progress .progress .knob { transform: scale(1); }
-  .pf-ctl { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-  .pf-ctl .glass { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; color: var(--bone); background: rgba(255, 255, 255, 0.08); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); transition: transform 0.15s var(--ease-out), background 0.2s ease; }
-  .pf-ctl .glass:active { transform: scale(0.92); background: rgba(255, 255, 255, 0.14); }
-  .pf-ctl .iris.big { width: 84px; height: 84px; margin: 0; box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent), 0 18px 50px -8px color-mix(in srgb, var(--gA) 85%, transparent); }
-  .pf-ctl .glass.on { color: var(--accent); }
-  .pf-modes { display: flex; justify-content: center; gap: 4px; padding: 4px; border-radius: 16px; background: rgba(255, 255, 255, 0.06); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); margin-top: 4px; }
-  .pf-modes button { position: relative; height: 34px; padding: 0 13px; border-radius: 12px; font-weight: 700; font-size: 13px; color: rgba(238, 233, 226, 0.65); transition: color 0.2s ease; }
-  .pf-modes button > span:not(.pill) { position: relative; }
-  .pf-modes .pill { position: absolute; inset: 0; border-radius: 12px; background: var(--bone); }
-  .pf-modes button.on { color: var(--ink); }
 
   /* not playing yet */
-  .pf-idle { gap: 10px; }
-  .pf-idle .label { color: rgba(238, 233, 226, 0.75); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5); }
-  .pf-hero, .pf-hint { text-shadow: 0 2px 30px rgba(0, 0, 0, 0.35); }
-  .pf-hero { font-family: var(--display); font-weight: 700; font-size: clamp(48px, 15vw, 76px); letter-spacing: -0.055em; line-height: 0.92; margin: 4px 0 2px; display: flex; align-items: baseline; }
-  .pf-hint { margin: 4px 0 0; font-weight: 700; font-size: 16px; max-width: 30ch; }
-  .pf-sub { margin: 0; color: rgba(238, 233, 226, 0.55); font-size: 14px; max-width: 30ch; }
-  .pf-start { width: 96px; height: 96px; margin: 26px 0 22px; border-radius: 50%; display: grid; place-items: center; color: var(--accent-ink); background: var(--accent); box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent), 0 24px 60px -10px color-mix(in srgb, var(--accent) 80%, transparent); transition: transform 0.2s var(--ease-out); }
-  .pf-start:active { transform: scale(0.95); }
-  .pf-start .spin { width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid transparent; border-top-color: currentColor; animation: spin 0.9s linear infinite; }
-  @media (max-height: 700px) { .pf-body { gap: 10px; } .pf-cover { width: min(58vw, 34svh); } .pf-start { margin: 16px 0 14px; } }
-  @media (prefers-reduced-motion: reduce) { .pf-aura i, .pf .dot { animation: none; } }
 
   /* tab bar order: «Главная» (Вспышка), «Чарт», «Моё», «Поиск» */
   .nav > .tab:first-child { order: 0; }
@@ -252,7 +190,11 @@ button, a, [role='button'] { -webkit-tap-highlight-color: transparent; touch-act
   .ps-top-r { justify-self: end; display: flex; }
   .ps-main { flex: 1; min-height: 0; display: grid; padding: 4px 18px 18px; }
   .ps-card { position: relative; min-height: 0; display: grid; border-radius: 28px; padding: 22px 18px; overflow: hidden; background: rgba(16, 14, 20, 0.55); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7); }
-  .ps-card-in { min-height: 0; height: 100%; }
+  .ps-card { grid-template-columns: minmax(0, 1fr); }
+  .ps-card-in { min-height: 0; min-width: 0; width: 100%; height: 100%; }
+  .ps-card .lyrics, .ps-card .lyrics .track, .ps-card .lyrics .ln, .ps-card .plain { box-sizing: border-box; max-width: 100%; }
+  .ps-card .lyrics .ln { overflow-wrap: anywhere; text-align: center; }
+  .ps-card .lyrics .ln .w { max-width: 100%; }
   .ps-expand { position: absolute; top: 10px; right: 10px; z-index: 3; width: 36px; height: 36px; color: rgba(238, 233, 226, 0.7); }
   .ps-card .lyrics .ln { text-align: center; font-size: clamp(21px, 6vw, 26px); }
   .ps-card .lyrics .ln.on { font-size: clamp(28px, 8.4vw, 36px); font-weight: 700; color: var(--bone); }
@@ -455,11 +397,6 @@ button, a, [role='button'] { -webkit-tap-highlight-color: transparent; touch-act
   .capsule { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
   .view > .section:nth-child(n + 4) { content-visibility: auto; contain-intrinsic-size: auto 460px; }
   .chart-hold { min-height: 640px; }
-  .pf-hero { white-space: nowrap; height: 0.95em; }
-  .pf-hint { height: 2.6em; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .pf-sub { height: 2.8em; line-height: 1.4; overflow: hidden; }
-  .pf-idle .label { height: 1.3em; line-height: 1.3em; }
-  .pf-idle { align-content: start; padding-top: max(0px, calc(50svh - 330px)); }
 }
 
 /* Phones: the tab bar as a floating glass dock tinted by the cover, a soft fade under it instead of
@@ -475,15 +412,14 @@ button, a, [role='button'] { -webkit-tap-highlight-color: transparent; touch-act
   .nav .tab:active, .nav .m-only:active { scale: 0.92; }
   .capsule-wrap { bottom: calc(10px + var(--safe-b) + var(--dock) + 10px); }
   .main { padding-bottom: calc(var(--dock) + var(--safe-b) + 120px); }
-  .pf { inset: 0; padding-bottom: calc(var(--dock) + var(--safe-b) + 26px); }
   .toast-wrap { bottom: calc(var(--dock) + var(--safe-b) + 96px); }
 }
 
-/* The Blink mark under the iPhone's island/notch (App.jsx IslandMark): the row is exactly the status
+/* The Blink mark under the iPhone's notch (App.jsx StatusMark): the row is exactly the status
    bar's height, so without a safe area (browsers, Android, computers) it has none and shows nothing. */
-.island-mark { display: none; }
+.status-mark { display: none; }
 @media (max-width: 760px) {
-  .island-mark { display: grid; place-items: center; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); overflow: hidden; z-index: 65; pointer-events: none; }
-  .island-mark span { display: flex; align-items: baseline; font-family: var(--display); font-weight: 700; font-size: 17px; line-height: 1; letter-spacing: -0.03em; color: rgba(255, 255, 255, 0.85); }
-  .island-mark i { width: 5px; height: 5px; margin-left: 1.5px; border-radius: 50%; background: var(--accent); }
+  .status-mark { display: grid; place-items: center; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); overflow: hidden; z-index: 65; pointer-events: none; }
+  .status-mark span { display: flex; align-items: baseline; font-family: var(--display); font-weight: 700; font-size: 17px; line-height: 1; letter-spacing: -0.03em; color: rgba(255, 255, 255, 0.85); }
+  .status-mark i { width: 5px; height: 5px; margin-left: 1.5px; border-radius: 50%; background: var(--accent); }
 }

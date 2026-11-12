@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { store, useStore, toast } from '../lib/store.js';
 import { previewFor, art } from '../lib/api.js';
 import { findYandexPreview } from '../lib/apiblink.js';
+import { proxied } from '../lib/img.js';
 import { toggle } from '../lib/player.js';
 import Icon from './Icon.jsx';
 
@@ -346,7 +347,7 @@ export default function StoryCard() {
     let alive = true;
     const src = art(track.artwork || '', 1000);
     // Through the bridge: a data URL keeps the canvas exportable whatever the image host sends.
-    (window.blink.image ? window.blink.image(src) : Promise.resolve(null))
+    (window.blink.image ? window.blink.image(proxied(src)).then((d) => d || (proxied(src) !== src ? window.blink.image(src) : null)) : Promise.resolve(null))
       .then((d) => loadImage(d))
       .then((img) => alive && setCover(img));
     return () => {

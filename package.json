@@ -1,9 +1,9 @@
 {
   "name": "blink",
   "productName": "Blink",
-  "version": "1.8.7",
+  "version": "1.9.9",
   "description": "Blink — музыкальный плеер для ПК",
-  "author": "ayori",
+  "author": "SYLQEN",
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
@@ -14,6 +14,7 @@
   },
   "build": {
     "appId": "app.blink.player",
+    "copyright": "© 2026 SYLQEN",
     "productName": "Blink",
     "files": [
       "dist/**",
@@ -65,6 +66,15 @@
     }
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
     "@fontsource/manrope": "^5.3.0",
     "@fontsource/unbounded": "^5.3.0",
     "@supabase/supabase-js": "^2.118.0",
@@ -75,6 +85,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^38.8.6",
     "electron-builder": "^26.15.3",

@@ -1,0 +1,45 @@
+/* ---------- New Year / winter theme ----------
+   Activated by html[data-theme='winter'] (set by App.jsx from the admin-panel toggle).
+   The cold palette itself is applied through CSS custom properties in Ambient (App.jsx);
+   this file handles the snow canvas layer and the Santa hat on the logo dot. */
+
+.snow {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+}
+
+/* Santa hat on the Blink wordmark dot (the titlebar logo). */
+html[data-theme='winter'] .wordmark .dot {
+  position: relative;
+}
+html[data-theme='winter'] .wordmark .dot::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  bottom: 5px;
+  width: 16px;
+  height: 16px;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 18 Q3 8 10 3 Q12 3 12 5 Q8 9 7 18 Z' fill='%23d63031'/%3E%3Cellipse cx='6' cy='18' rx='5' ry='2.2' fill='%23f8f8f8'/%3E%3Ccircle cx='10.5' cy='3.5' r='2.5' fill='%23f8f8f8'/%3E%3C/svg%3E") center/contain no-repeat;
+  pointer-events: none;
+}
+
+/* Same hat on the bigger logos: the landing page and the desktop intro. */
+html[data-theme='winter'] .landing h1 .dot,
+html[data-theme='winter'] .intro .mark .dot,
+html[data-theme='winter'] .flash-title .dot {
+  position: relative;
+}
+html[data-theme='winter'] .landing h1 .dot::after,
+html[data-theme='winter'] .intro .mark .dot::after,
+html[data-theme='winter'] .flash-title .dot::after {
+  content: '';
+  position: absolute;
+  left: -0.06em;
+  bottom: 0.45em;
+  width: 0.4em;
+  height: 0.4em;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 18 Q3 8 10 3 Q12 3 12 5 Q8 9 7 18 Z' fill='%23d63031'/%3E%3Cellipse cx='6' cy='18' rx='5' ry='2.2' fill='%23f8f8f8'/%3E%3Ccircle cx='10.5' cy='3.5' r='2.5' fill='%23f8f8f8'/%3E%3C/svg%3E") center/contain no-repeat;
+  pointer-events: none;
+}

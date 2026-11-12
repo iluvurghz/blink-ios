@@ -62,6 +62,7 @@ export const store = createStore({
   apiblinkEnabled: true,
   yandexAsPrimary: false,
   yandexSearchOnly: false,
+  winterTheme: false, // New Year theme (snow, cold palette) — toggled from the admin panel
 });
 
 // Playback clock lives apart so the progress bar doesn't re-render the whole tree.
@@ -93,6 +94,9 @@ function pruneYtCache() {
 const PERSIST = ['settings', 'likes', 'waveBan', 'aiBan', 'playlists', 'recent', 'ytCache', 'dead', 'via', 'lens', 'lyricShift', 'volume', 'muted', 'queue', 'index', 'shuffle', 'repeat', 'plus', 'saved'];
 
 const MEDIA_BASE = (import.meta.env.VITE_MEDIA_URL || 'https://blinkmusic.cc').replace(/\/$/, '');
+
+// Sends the settings to the app right now instead of after the 1.2 s pause (set up in loadState).
+export let saveNow = () => {};
 
 export async function loadState() {
   const [data, builtinKey, apiParserUrl] = await Promise.all([
@@ -141,6 +145,7 @@ export async function loadState() {
         apiblinkEnabled: cfg.apiblinkEnabled !== false,
         yandexAsPrimary: cfg.yandexAsPrimary === true,
         yandexSearchOnly: cfg.yandexSearchOnly === true,
+        winterTheme: cfg.winterTheme === true,
       });
     })
     .catch(() => {});
@@ -182,6 +187,7 @@ export async function loadState() {
     clearTimeout(saveTimer);
     flush();
   };
+  saveNow = flushNow;
   window.addEventListener('pagehide', flushNow);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flushNow());
   window.addEventListener('beforeunload', flushNow);

@@ -1,22 +1,52 @@
 /* ---------- Blink+ look ----------
-   One idea: a spark of light on an orbit (a blink). Pearl on ink, the accent is only the spark's head
-   and the "+". No gradient text, no glow clouds. */
+   One idea: a spark of light on an orbit (a blink). Pearl on ink, and no orange anywhere in Blink+.
+   The orbit is a crisp ring that never moves (the browser draws it, so it stays sharp at any pixel
+   ratio) with a soft light gliding round it. Only the light turns, as a transform on the compositor,
+   so a busy page cannot make it stutter. */
 
-/* The orbit: a thin ring with a comet. Any round element can wear it (set --orbit-gap / --orbit-w). */
-.avatar.plus, .plus-orb, .plus-stage .avatar { position: relative; }
-.avatar.plus { overflow: visible; --orbit-gap: 2px; --orbit-w: 2px; box-shadow: 0 0 0 2px var(--ink); }
-.avatar.plus.big { --orbit-gap: 3px; --orbit-w: 3px; box-shadow: 0 0 0 3px var(--ink); }
+/* The accent fill under a signed-in avatar used to show at the photo's anti-aliased edge as a thin
+   orange rim. A photo now sits on the neutral tone; in Blink+ a letter placeholder is pearl. */
+.avatar.on:has(> img) { background: rgba(238, 233, 226, 0.08); }
+.avatar.on.plus:not(:has(> img)) { background: var(--pearl-fill); color: #1a1c20; }
+
+/* The orbit. Any round element can wear it (set --orbit-gap / --orbit-w / --orbit-glow). */
+.avatar.plus, .plus-orb { position: relative; --orbit-gap: 2px; --orbit-w: 2px; --orbit-glow: 3px; }
+.avatar.plus { overflow: visible; }
+.avatar.plus.big { --orbit-gap: 3px; --orbit-glow: 4px; }
+.avatar.plus::before, .plus-orb::before, .avatar.plus::after, .plus-orb::after { content: ''; position: absolute; pointer-events: none; border-radius: 50%; }
+
+/* The ring: still, so it is always sharp and always readable. */
 .avatar.plus::before, .plus-orb::before {
-  content: ''; position: absolute; pointer-events: none; border-radius: 50%;
-  inset: calc((var(--orbit-gap, 3px) + var(--orbit-w, 2px)) * -1);
-  background: conic-gradient(from 0deg, transparent 0 58%, rgba(236, 230, 220, 0.12) 60%, #fff4e0 99%, transparent 100%), rgba(236, 230, 220, 0.16);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--orbit-w, 2px) - 0.6px), #000 calc(100% - var(--orbit-w, 2px)));
-  mask: radial-gradient(farthest-side, transparent calc(100% - var(--orbit-w, 2px) - 0.6px), #000 calc(100% - var(--orbit-w, 2px)));
-  animation: orbit-spin 3.8s linear infinite; will-change: transform;
+  inset: calc((var(--orbit-gap) + var(--orbit-w)) * -1);
+  border: var(--orbit-w) solid rgba(236, 230, 220, 0.6);
+}
+/* Where a ring can be cut out of a gradient it gets the pearl sheen; the plain border above is the fallback. */
+@supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+  .avatar.plus::before, .plus-orb::before {
+    border: 0; padding: var(--orbit-w);
+    background: conic-gradient(from 215deg, rgba(246, 241, 233, 0.86), rgba(174, 189, 202, 0.52) 26%, rgba(232, 218, 195, 0.76) 52%, rgba(143, 163, 179, 0.46) 76%, rgba(246, 241, 233, 0.86));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+}
+
+/* The light: a comet that brightens the ring and spills a little over its edges. It is soft on purpose, so
+   turning it never shows. The mask closes the ring (transparent past the edge) so WebKit can't paint the
+   square corners of the box when it ignores border-radius on a masked, rotating layer. */
+.avatar.plus::after, .plus-orb::after {
+  --orbit-mask: radial-gradient(closest-side, transparent calc(100% - var(--orbit-glow) - var(--orbit-w) - 1.5px), #000 calc(100% - var(--orbit-glow) - var(--orbit-w) + 0.5px), #000 calc(100% - var(--orbit-glow) - 0.5px), rgba(0, 0, 0, 0.25) calc(100% - var(--orbit-glow) * 0.5), transparent 100%);
+  inset: calc((var(--orbit-gap) + var(--orbit-w) + var(--orbit-glow)) * -1);
+  background: conic-gradient(from 30deg, transparent 0 55%, rgba(190, 205, 220, 0.14) 66%, rgba(214, 224, 235, 0.42) 82%, #fff6e6 94%, transparent 98%);
+  -webkit-mask-image: var(--orbit-mask); mask-image: var(--orbit-mask);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  clip-path: circle(50%);
+  animation: orbit-spin 7s linear infinite; will-change: transform;
 }
 @keyframes orbit-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .avatar.plus::before, .plus-orb::before { animation: none; } }
-html[data-game='on'] .avatar.plus::before, html[data-game='on'] .plus-orb::before { animation: none; will-change: auto; }
+@media (prefers-reduced-motion: reduce) { .avatar.plus::after, .plus-orb::after { animation: none; } }
+html[data-game='on'] .avatar.plus::after, html[data-game='on'] .plus-orb::after { animation: none; will-change: auto; }
 
 /* Pearl: a cool sheen, apart from the cover accent */
 :root {
@@ -102,9 +132,9 @@ html[data-game='on'] .plus-card::before { animation: none; }
 .plus-card-thanks { color: var(--mute); font-size: 13px; line-height: 1.45; }
 
 /* Soft entry: a slim strip, one tap away, can be dismissed */
-.plus-promo { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; margin: 14px 0 6px; padding: 12px 44px 12px 16px; border-radius: 18px; border: 1px solid transparent; background: linear-gradient(135deg, #24272d, #17181c 60%, #1f1d1a) padding-box, var(--pearl-edge) border-box; text-align: left; cursor: pointer; transition: box-shadow 0.2s ease, background-color 0.2s ease; }
+.plus-promo { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; margin: 14px 0 20px; padding: 12px 44px 12px 16px; border-radius: 18px; border: 1px solid transparent; background: linear-gradient(135deg, #24272d, #17181c 60%, #1f1d1a) padding-box, var(--pearl-edge) border-box; text-align: left; cursor: pointer; transition: box-shadow 0.2s ease, background-color 0.2s ease; }
 .plus-promo:hover { filter: brightness(1.1); }
-.plus-orb { --orbit-gap: 3px; --orbit-w: 1.5px; width: 34px; height: 34px; margin: 4px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--pearl); background: rgba(236, 230, 220, 0.07); }
+.plus-orb { width: 34px; height: 34px; margin: 4px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--pearl); background: rgba(236, 230, 220, 0.07); }
 .plus-promo-t { display: block; font-family: var(--display); font-size: 14px; font-weight: 600; letter-spacing: -0.02em; }
 .plus-promo-d { display: block; margin-top: 2px; color: var(--mute); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plus-promo-p { color: var(--pearl); font-size: 13px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -123,20 +153,18 @@ html[data-game='on'] .plus-card::before { animation: none; }
 .keep-text { max-width: 50ch; margin: 8px 0 18px; color: var(--mute); font-size: 13.5px; line-height: 1.5; }
 
 .keep-ladder { position: relative; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); margin: 4px 0 18px; }
-.keep-ladder::before, .keep-ladder::after { content: ''; position: absolute; left: calc(50% / var(--n, 3)); height: 2px; top: 17px; border-radius: 2px; }
+.keep-ladder::before, .keep-ladder::after { content: ''; position: absolute; left: calc(50% / var(--n, 3)); height: 2px; top: 6px; border-radius: 2px; }
 .keep-ladder::before { right: calc(50% / var(--n, 3)); background: var(--line-2); }
 .keep-ladder::after { width: calc((100% - 100% / var(--n, 3)) * var(--fill, 0)); background: var(--pearl); transition: width 0.6s var(--ease-out); }
 .keep-rung { position: relative; z-index: 1; display: grid; justify-items: center; gap: 6px; text-align: center; color: var(--faint); transition: color 0.3s ease; }
-.keep-rung i { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--line-2); }
-.keep-rung img { width: 20px; height: 20px; object-fit: contain; filter: grayscale(1) brightness(0.7); opacity: 0.7; }
+.keep-rung i { width: 14px; height: 14px; border-radius: 50%; background: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--line-2); }
 .keep-rung b { font-size: 12.5px; font-weight: 700; }
 .keep-rung small { font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .keep-rung.got { color: var(--bone); }
-.keep-rung.got i { background: rgba(236, 230, 220, 0.1); box-shadow: inset 0 0 0 1.5px var(--pearl); }
-.keep-rung.got img { filter: none; opacity: 1; }
-.keep-rung.now i { box-shadow: inset 0 0 0 2px var(--pearl), 0 0 14px -2px rgba(236, 230, 220, 0.4); }
-.keep-rung[data-tier='2'].got i { box-shadow: inset 0 0 0 1.5px #b9d4ea; }
-.keep-rung[data-tier='3'].got i { box-shadow: inset 0 0 0 1.5px #e8c27a; }
+.keep-rung.got i { background: var(--pearl); box-shadow: none; }
+.keep-rung.now i { box-shadow: 0 0 0 3px rgba(236, 230, 220, 0.18), 0 0 14px -2px rgba(236, 230, 220, 0.5); }
+.keep-rung[data-tier='2'].got i { background: #b9d4ea; }
+.keep-rung[data-tier='3'].got i { background: #e8c27a; }
 .keep-goal { margin: -6px 0 14px; color: var(--mute); font-size: 13px; }
 .keep-goal b { color: var(--bone); }
 
@@ -156,7 +184,7 @@ html[data-game='on'] .plus-card::before { animation: none; }
 .keep-fine { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 
 /* The badge: three rungs. Pearl, then cool chrome, then warm gold with a slow sheen. */
-.keep-chip { position: relative; overflow: hidden; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 4px; border-radius: 999px; border: 1px solid transparent; background: linear-gradient(#141518, #141518) padding-box, var(--pearl-sheen) border-box; font-family: var(--display); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; color: var(--pearl); white-space: nowrap; }
+.keep-chip { position: relative; overflow: hidden; flex: none; display: inline-flex; align-items: center; gap: 0; height: 22px; padding: 0 11px; border-radius: 999px; border: 1px solid transparent; background: linear-gradient(#141518, #141518) padding-box, var(--pearl-sheen) border-box; font-family: var(--display); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; color: var(--pearl); white-space: nowrap; }
 /* Blink "b." + Spherical's eye: square boxes of one size, so neither can stick out of the chip. */
 .bk-mark { position: relative; flex: none; display: inline-grid; place-items: center; width: 1em; height: 1em; font-family: var(--display); font-weight: 800; font-size: 1em; line-height: 1; letter-spacing: 0; color: var(--pearl); }
 .bk-mark i { position: absolute; right: 0.06em; bottom: 0.14em; width: 0.17em; height: 0.17em; border-radius: 50%; background: currentColor; }
@@ -164,15 +192,12 @@ html[data-game='on'] .plus-card::before { animation: none; }
 .keep-lock img { width: 1em; height: 1em; object-fit: contain; display: block; }
 .keep-lock .bk-mark { font-size: 0.86em; width: 0.86em; height: 0.86em; }
 .keep-chip[data-tier='2'] { color: #dcecf8; background: linear-gradient(#12171c, #12171c) padding-box, linear-gradient(140deg, #dcecf8, #7fa3c4, #dcecf8) border-box; box-shadow: 0 0 10px -3px rgba(150, 190, 225, 0.5); }
-.keep-chip[data-tier='2'] .bk-mark { color: #dcecf8; }
 .keep-chip[data-tier='3'] { color: #f7e2b6; background: linear-gradient(#1a1610, #1a1610) padding-box, linear-gradient(140deg, #fbe7b8, #c8923a, #fbe7b8) border-box; box-shadow: 0 0 12px -3px rgba(232, 194, 122, 0.55); }
-.keep-chip[data-tier='3'] .bk-mark { color: #f7e2b6; }
 .keep-chip[data-tier='3']::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255, 236, 190, 0.28) 50%, transparent 60%); transform: translateX(-120%); animation: keep-sheen 5s var(--ease-in-out) infinite; pointer-events: none; }
 @keyframes keep-sheen { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 @media (prefers-reduced-motion: reduce) { .keep-chip[data-tier='3']::after { animation: none; opacity: 0; } }
 html[data-game='on'] .keep-chip::after { animation: none; }
-.prof-text h1 .keep-chip { height: 32px; padding: 0 14px 0 6px; gap: 8px; font-size: 13px; }
-.prof-text h1 .keep-chip .keep-lock { font-size: 20px; }
+.prof-text h1 .keep-chip { height: 30px; padding: 0 14px; font-size: 13px; }
 
 @media (max-width: 760px) {
   .plus-page { gap: 32px; }

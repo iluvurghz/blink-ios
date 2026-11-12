@@ -1,3 +1,4 @@
+import './lib/capBridge.js'; // the phone app: native window.blink (does nothing elsewhere)
 import './lib/webBridge.js';
 import './lib/support.js'; // first: catches errors for the Ctrl+P bug report from the start
 import { createRoot } from 'react-dom/client';
@@ -23,16 +24,22 @@ import './styles.css';
 import './plus.css';
 import './mobile.css';
 import './perf.css';
+import './flash.css';
+import './winter.css';
 import * as player from './lib/player.js';
 import * as wave from './lib/wave.js';
 import { loadState, store } from './lib/store.js';
 
 import { initCloud } from './lib/cloud.js';
 import { startPresence } from './lib/presence.js';
+import { startFriends } from './lib/friends.js';
 import { watchForUpdates } from './lib/freshness.js';
 import { desktopHandoffPage } from './lib/gsignin.js';
+import { desktopTelegramPage } from './lib/tgsignin.js';
 import { initHaptics } from './lib/haptic.js';
+import { initImgFallback } from './lib/imgfallback.js';
 initHaptics();
+initImgFallback();
 
 // Hidden or minimised: pause CSS animations (see perf.css).
 document.addEventListener('visibilitychange', () => (document.documentElement.dataset.bg = document.hidden ? '1' : ''));
@@ -48,8 +55,14 @@ if (new URLSearchParams(location.search).get('gsignin') === 'desktop') {
   desktopHandoffPage();
 }
 
+if (new URLSearchParams(location.search).get('tgsignin') === 'desktop') {
+  window.__blinkHandoff = true;
+  desktopTelegramPage();
+}
+
 if (!window.__blinkHandoff) {
   loadState().then(initCloud).then(startPresence, startPresence);
+  startFriends();
   window.__blink = { store, player, wave };
   // Game mode (the app starts with --blink-game) loads only the small player, not the full interface.
   const root = createRoot(document.getElementById('root'));

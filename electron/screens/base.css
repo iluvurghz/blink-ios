@@ -1,0 +1,87 @@
+/* Shared look of the small Blink windows: setup launcher (launcher/ui) and the update window (electron/screens).
+   The launcher copies this file and fonts/ at build time (launcher/sync-ui.cjs), so edit it here. */
+@font-face{font-family:Unbounded;font-weight:500;font-display:block;src:url(fonts/unbounded-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122,U+2190-2199}
+@font-face{font-family:Unbounded;font-weight:500;font-display:block;src:url(fonts/unbounded-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:Manrope;font-weight:500;font-display:block;src:url(fonts/manrope-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122,U+2190-2199}
+@font-face{font-family:Manrope;font-weight:500;font-display:block;src:url(fonts/manrope-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:Manrope;font-weight:600;font-display:block;src:url(fonts/manrope-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122,U+2190-2199}
+@font-face{font-family:Manrope;font-weight:600;font-display:block;src:url(fonts/manrope-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:Manrope;font-weight:700;font-display:block;src:url(fonts/manrope-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122,U+2190-2199}
+@font-face{font-family:Manrope;font-weight:700;font-display:block;src:url(fonts/manrope-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+
+/* «Бумага»: light paper, ink text, one cobalt accent */
+:root{
+  --bg:#f1eee6; --text:#14131a; --mute:#5e5b66; --faint:#9a96a0;
+  --line:rgba(20,19,26,.08); --line-2:rgba(20,19,26,.16);
+  --accent:#2443ff; --on-accent:#fff;
+  --gA:hsl(225 90% 72%); --gB:hsl(40 80% 80%); --gC:hsl(195 70% 78%);
+  --veil:rgba(241,238,230,.86);
+  --display:'Unbounded','Manrope',system-ui,sans-serif;
+  --font:'Manrope',system-ui,sans-serif;
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --ease-io:cubic-bezier(.77,0,.175,1);
+  color-scheme:light;
+}
+/* the update screen speaks in ink instead of cobalt */
+.ink{--accent:#14131a;--on-accent:#f1eee6}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:transparent;overflow:hidden}
+body{font-family:var(--font);font-size:15px;line-height:1.55;color:var(--text);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;user-select:none;cursor:default}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,.tg:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+/* The window is transparent and 20px larger than the card, so the card can cast its own shadow. */
+.win{position:absolute;left:20px;top:20px;width:560px;height:360px;border-radius:18px;overflow:hidden;
+  background:var(--bg);isolation:isolate;
+  box-shadow:0 18px 40px -16px rgba(20,19,26,.35),0 0 0 1px rgba(20,19,26,.10)}
+.amb{position:absolute;inset:0;z-index:-2;overflow:hidden}
+.amb i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.9;transition:background 1.2s}
+.amb .a{width:380px;height:380px;left:-120px;top:-200px;background:var(--gA);animation:dA 18s ease-in-out infinite alternate}
+.amb .b{width:300px;height:300px;right:-110px;top:40px;background:var(--gB);animation:dB 22s ease-in-out infinite alternate}
+.amb .c{width:340px;height:340px;left:140px;bottom:-250px;background:var(--gC);animation:dC 20s ease-in-out infinite alternate}
+.amb::after{content:"";position:absolute;inset:0;background:var(--veil)}
+.grain{position:absolute;inset:0;z-index:-1;opacity:.10;mix-blend-mode:multiply;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+@keyframes dA{to{transform:translate(60px,40px)}}
+@keyframes dB{to{transform:translate(-50px,30px)}}
+@keyframes dC{to{transform:translate(-40px,-30px)}}
+
+.bar{position:relative;z-index:2;height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 18px}
+.mini{font-family:var(--display);font-weight:500;font-size:13px;letter-spacing:-.02em;color:var(--mute);display:flex;align-items:baseline;pointer-events:none}
+.mini::after{content:"";width:4px;height:4px;border-radius:50%;background:var(--accent);margin-left:2px}
+.mini .tag{order:2;margin-left:10px;font-family:var(--font);font-size:11px;font-weight:600;color:var(--faint);letter-spacing:0}
+.ctrls{display:flex;gap:2px}
+.ctrls button{width:30px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--faint);transition:background .2s,color .2s}
+.ctrls button:hover{background:rgba(20,19,26,.06);color:var(--text)}
+.ctrls button[hidden]{display:none}
+.ctrls svg{width:11px;height:11px;stroke:currentColor;stroke-width:1.4;fill:none}
+
+.scr{position:absolute;inset:42px 0 0 0;padding:0 36px 28px;display:flex;flex-direction:column;
+  opacity:0;transform:translateY(6px);transition:opacity .4s var(--ease-out),transform .4s var(--ease-out);pointer-events:none}
+.scr.on{opacity:1;transform:none;pointer-events:auto}
+.foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.meta{font-size:12px;color:var(--faint)}
+.meta b{color:var(--mute);font-weight:600}
+
+.btn{height:44px;padding:0 22px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:10px;transition:transform .2s var(--ease-out),filter .2s,box-shadow .2s;box-shadow:0 8px 22px -10px color-mix(in srgb,var(--accent) 70%,transparent)}
+.btn:hover{filter:brightness(1.08)} .btn:active{transform:scale(.97)}
+.btn svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none}
+.ghost{height:44px;padding:0 20px;border-radius:999px;color:var(--mute);font-weight:600;font-size:14px;border:1px solid var(--line-2);transition:color .2s,border-color .2s}
+.ghost:hover{color:var(--text);border-color:rgba(20,19,26,.3)}
+.pair{display:flex;align-items:center;gap:12px}
+.link{font-size:13px;color:var(--mute);font-weight:600;border-bottom:1px dashed var(--line-2);padding-bottom:1px}
+.link:hover{color:var(--text)}
+
+/* the wordmark: its dot is the whole interface */
+.wm{font-family:var(--display);font-weight:500;letter-spacing:-.045em;line-height:1;display:flex;align-items:baseline;color:var(--text)}
+.wm .d{display:inline-block;border-radius:999px;background:var(--accent);flex:none}
+.wm.xl{font-size:76px} .wm.xl .d{width:15px;height:15px;margin-left:6px}
+.wm.l{font-size:44px} .wm.l .d{width:9px;height:9px;margin-left:4px}
+.pulse{animation:pulse 2.4s var(--ease-io) infinite}
+@keyframes pulse{0%,70%,100%{transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 45%,transparent)}35%{transform:scale(1.25);box-shadow:0 0 0 12px transparent}}
+
+.tg{width:36px;height:20px;border-radius:99px;background:rgba(20,19,26,.14);position:relative;flex:none;transition:background .25s}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(20,19,26,.25);transition:left .25s var(--ease-out)}
+.tg.on{background:var(--accent)} .tg.on::after{left:19px}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

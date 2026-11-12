@@ -1,11 +1,12 @@
 import { store, clock, toast, pushRecent, ytKey, requireAccount, ytFresh, markDead } from './store.js';
 import { resolveVideos, artist as fetchArtist } from './api.js';
 import { resolveRemote, recordPlay, DEVICE_NAME, playableIds } from './cloud.js';
-import { waveBatch, quickStart, similarTo, noteSkip } from './wave.js';
+import { waveBatch, quickStart, similarTo, noteSkip, noteListen } from './wave.js';
 import { playUrl, reportStream, latestLicensed } from './catalog.js';
 import { findMp3 } from './apiparser.js';
 import { findApiblink } from './apiblink.js';
 import { isSaved, savedUrl } from './offline.js';
+import { scaleSc } from './img.js';
 import { hasEq, wire, gainOf, resume as resumeEq, eqState } from './eq.js';
 
 const bridge = window.blink;
@@ -742,6 +743,8 @@ function onState(state, who) {
   else if (state === 3) {
     if (store.get().status !== 'loading') setStatus('buffering');
   } else if (state === 0) {
+    // «Ended» from a player that was already stopped for a newly chosen track must not skip it.
+    if (who && !currentVideo) return;
     if (performance.now() - loadAt > 2000) onEnded();
   }
 }
@@ -754,6 +757,7 @@ function onError(code, who) {
   }
   // 100 removed, 101/150 the owner doesn't allow playback in other apps
   console.warn('youtube error', code, currentVideo);
+  if (!currentVideo) return; // late error of a player that was already stopped for another track
   candidateIdx++;
   if (candidateIdx < candidates.length) {
     loadVideo(candidates[candidateIdx], pendingStart);
@@ -788,9 +792,9 @@ function onError(code, who) {
         sendAudio({ type: 'load', url: result.url, start });
       } else {
         // Skip silently
-        setTimeout(() => next(true), 500);
+        skipLater(token);
       }
-    }).catch(() => setTimeout(() => next(true), 500));
+    }).catch(() => skipLater(token));
     return;
   }
   skipAfterFailure();
@@ -836,7 +840,8 @@ function bigArt(url) {
   if (/\/\d+x\d+bb\.jpg$/.test(url)) return url.replace(/\/\d+x\d+bb\.jpg$/, '/1000x1000bb.jpg');
   // Yandex: .../100x100 → .../1000x1000
   if (/\/\d+x\d+$/.test(url)) return url.replace(/\/\d+x\d+$/, '/1000x1000');
-  return url;
+  // SoundCloud: ...-large.jpg → ...-t500x500.jpg
+  return scaleSc(url, 500);
 }
 
 // Lock-screen / headphone buttons. iOS shows «±10 s» instead of previous/next whenever the page has no
@@ -977,7 +982,7 @@ async function startAudio(track, start = 0) {
 
   // Helper: play via APIBlink (Yandex Music).
   async function playViaApiblink(fallbackToParser = true) {
-    if (!apiblinkOk) return fallbackToParser ? playViaParser() : (setStatus('idle'), setTimeout(() => next(true), 500));
+    if (!apiblinkOk) return fallbackToParser ? playViaParser() : (setStatus('idle'), skipLater(token));
     if (engine === 'audio') sendAudio({ type: 'stop' });
     engine = 'audio';
     store.set({ hasClip: false, engine: 'audio' });
@@ -997,13 +1002,13 @@ async function startAudio(track, start = 0) {
       return playViaParser();
     } else {
       setStatus('idle');
-      setTimeout(() => next(true), 500);
+      skipLater(token);
     }
   }
 
   // Helper: play via API parser (avoids code repetition below).
   async function playViaParser() {
-    if (!parserOk) { setStatus('idle'); setTimeout(() => next(true), 500); return; }
+    if (!parserOk) { setStatus('idle'); skipLater(token); return; }
     if (engine === 'audio') sendAudio({ type: 'stop' });
     engine = 'audio';
     store.set({ hasClip: false, engine: 'audio' });
@@ -1021,7 +1026,7 @@ async function startAudio(track, start = 0) {
       sendAudio({ type: 'load', url: result.url, start });
     } else {
       setStatus('idle');
-      setTimeout(() => next(true), 500);
+      skipLater(token);
     }
   }
 
@@ -1213,6 +1218,18 @@ export const limitActive = () => Date.now() - (store.get().limitHit || 0) < 1000
 
 // One failed track moves on; several in a row stop, so errors never cascade.
 let failStreak = 0;
+// Moves on after a failure, but only if the listener hasn't already picked something else in
+// the meantime (otherwise a stale timer skips the track they just chose).
+function skipLater(token = loadToken) {
+  const id = store.get().track && store.get().track.id;
+  setTimeout(() => {
+    if (token !== loadToken) return;
+    const t = store.get().track;
+    if ((t && t.id) !== id) return;
+    next(true);
+  }, 500);
+}
+
 function skipAfterFailure() {
   failStreak++;
   const cur = store.get().track;
@@ -1226,7 +1243,7 @@ function skipAfterFailure() {
     return;
   }
   // Skip silently
-  setTimeout(() => next(true), 500);
+  skipLater();
 }
 
 // When new tracks can't be looked up today, jump to the next one that's already known.
@@ -1295,6 +1312,10 @@ function begin(track, start = 0, fade = false, resume = false) {
   if (!fade) cancelXfade();
   if (!resume) cutFor = { id: track.id, n: 0 };
   intendedDur = track.duration || 0;
+  // The stall watchdogs time one track: a fresh one starts from zero, otherwise a quick
+  // switch inherits the previous track's «stuck» time and gets skipped as failed.
+  stallSince = 0;
+  midStall = 0;
   // The previous track must go silent right away, even if the new one fails to load.
   holdSession();
   if (currentVideo) send({ type: 'stop' });
@@ -1370,6 +1391,31 @@ export function toggle() {
   }
 }
 
+// The cross on the home page closes the player: whatever plays stops and the queue is dropped, so the
+// home page goes back to rest. Your other devices see it as a pause at this spot.
+export function stopPlayback() {
+  const s = store.get();
+  if (s.user && s.track) {
+    lastNow = { id: s.track.id, playing: false, at: Date.now() };
+    store.set({ nowPlaying: { track: s.track, time: clock.get().time, at: Date.now(), playing: false, device: undefined, deviceName: DEVICE_NAME } });
+  }
+  loadToken++; // anything still loading must not start by itself
+  cancelXfade();
+  clearInterval(fadeTimer);
+  fadingOut = false;
+  fadeMul = 1;
+  releaseSession();
+  if (currentVideo) send({ type: 'stop' });
+  if (engine === 'audio') sendAudio({ type: 'stop' });
+  currentVideo = null;
+  listenedId = null;
+  clock.set({ time: 0, duration: 0, at: performance.now(), playing: false });
+  store.set({ track: null, queue: [], index: -1, wave: false, flow: false, waveLoading: false, pendingResume: false, resumeAt: 0, remoteFrom: null, queueFrom: null, hasClip: false });
+  setStatus('idle');
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+  applyVol();
+}
+
 export async function next(auto = false) {
   const s = store.get();
   if (!s.queue.length) return;
@@ -1378,6 +1424,12 @@ export async function next(auto = false) {
   fadeInNext = false;
   // Skipped by hand in the first seconds of a stream track: the stream learns it is not liked.
   if (!auto && (s.wave || s.flow) && s.track && clock.get().time < 25) noteSkip(s.track);
+  // Skipped late (past 70% of the track) still counts as a listen for the taste profile.
+  if (!auto && s.track) {
+    const c = clock.get();
+    const dur = c.duration || s.track.duration || 0;
+    if (dur > 20 && c.time / dur >= 0.7) noteListen(s.track, c.time / dur);
+  }
   if (!fade) cancelXfade();
   if (s.index < s.queue.length - 1) return playIndex(s.index + 1, fade);
   if (s.repeat === 'all') return playIndex(0, fade);
@@ -1489,6 +1541,7 @@ export function toggleMute() {
 
 function onEnded() {
   const s = store.get();
+  if (s.track) noteListen(s.track, 1); // heard to the end (a repeat counts again)
   if (s.repeat === 'one') {
     if (engine === 'audio') {
       audio.currentTime = 0;

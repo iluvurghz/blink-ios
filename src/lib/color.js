@@ -1,4 +1,5 @@
 // Pulls a small palette out of the artwork so the whole window takes its light.
+import { proxied, scaleSc } from './img.js';
 const cache = new Map();
 
 function rgbToHsl(r, g, b) {
@@ -27,15 +28,27 @@ export const DEFAULT_PALETTE = {
   accent: 'hsl(18 92% 64%)',
   accentInk: 'hsl(18 60% 10%)',
   glowA: 'hsl(18 70% 38%)',
-  glowB: 'hsl(330 45% 30%)',
-  glowC: 'hsl(250 35% 26%)',
+  glowB: 'hsl(352 48% 28%)',
+  glowC: 'hsl(24 42% 19%)',
+};
+
+// New Year / winter theme: a cold blue palette that replaces the artwork-derived one.
+export const WINTER_PALETTE = {
+  accent: 'hsl(200 85% 66%)',
+  accentInk: 'hsl(210 55% 12%)',
+  glowA: 'hsl(200 70% 36%)',
+  glowB: 'hsl(220 48% 28%)',
+  glowC: 'hsl(190 42% 22%)',
 };
 
 export async function paletteFor(url) {
   if (!url) return DEFAULT_PALETTE;
   if (cache.has(url)) return cache.get(url);
-  const small = url.replace(/\/\d+x\d+bb\.jpg$/, '/60x60bb.jpg');
-  const data = await window.blink.image(small);
+  const small = scaleSc(url.replace(/\/\d+x\d+bb\.jpg$/, '/60x60bb.jpg'), 100);
+  // Slow hosts (SoundCloud, Deezer, Apple) come through Blink's server; if it can't give the
+  // picture, the original address is tried once.
+  const via = proxied(small);
+  const data = (await window.blink.image(via)) || (via !== small ? await window.blink.image(small) : null);
   if (!data) return DEFAULT_PALETTE;
   const img = new Image();
   img.src = data;

@@ -1,21 +1,22 @@
-import Shot from './Shot.jsx';
+import FlashHome from './FlashHome.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Icon from './Icon.jsx';
 import { Cover, TrackRow, AlbumCard, ArtistCard, ArtistLinks, Skeleton, ErrorBox, useAsync, fmt, totalTime, plural, openMenu, Eq } from './common.jsx';
-import { shareTrack } from './share.js';
 import { ask } from './Confirm.jsx';
-import { Progress, Transport, Volume, PlayButton } from './Capsule.jsx';
+import { Progress, Transport, Volume } from './Capsule.jsx';
 import { store, useStore, go, playable, createPlaylist, deletePlaylist, renamePlaylist, toast, toggleLike } from '../lib/store.js';
-import { playTrack, startWave, next, prev } from '../lib/player.js';
+import { playTrack, startWave, next } from '../lib/player.js';
 import { tasteArtists, waveBatch, notThis, WAVE_MODES } from '../lib/wave.js';
 import * as api from '../lib/api.js';
+import { proxied, coverFallback } from '../lib/img.js';
 import { paletteFor } from '../lib/color.js';
 import { searchLicensed, latestLicensed, searchJamendo, uploadPlaylistCover } from '../lib/catalog.js';
 import { sharePlaylist, sharedState, unsharePlaylist, shareLink, fetchEditorial, fetchEditorialOne } from '../lib/cloud.js';
 import { searchMp3 } from '../lib/apiparser.js';
-import { searchApiblink } from '../lib/apiblink.js';
+import { searchApiblink, searchSoundcloud, searchVk } from '../lib/apiblink.js';
 import { topRu, periodChart } from '../lib/charts.js';
+import { FriendsStrip } from './Friends.jsx';
 import { searchMore, trackKey } from '../lib/moreMeta.js';
 import { noAi } from '../lib/aiFilter.js';
 import { rankTracks } from '../lib/rank.js';
@@ -80,7 +81,7 @@ export function FlashHost() {
   if (!kept) return null;
   return (
     <div className="flash-host" hidden={!shown}>
-      <PhoneFlash shown={shown} />
+      <FlashHome shown={shown} />
     </div>
   );
 }
@@ -99,6 +100,13 @@ export function Overview({ noFlash = false }) {
   const tracks = (ru.data && ru.data.length ? ru.data : data && data.tracks) || [];
   // The hero waits only while there is nothing at all to show, not for every source.
   const loading = !tracks.length && (appleLoading || ru.loading);
+  // A slow connection used to leave the skeleton up for ~20 s with no word: say so after 8 s.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!loading) return setSlow(false);
+    const t = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   if (error && !tracks.length) return <ErrorBox retry={retry} />;
   const top = tracks[0];
@@ -116,6 +124,14 @@ export function Overview({ noFlash = false }) {
             <div className="sk" style={{ width: '70%', height: 150, marginTop: 24 }} />
           </div>
           <div className="sk" style={{ aspectRatio: 1, borderRadius: 24 }} />
+          {slow && (
+            <div className="slow-note" style={{ gridColumn: '1 / -1' }}>
+              Чарт грузится дольше обычного.
+              <button className="btn ghost" onClick={retry}>
+                Повторить
+              </button>
+            </div>
+          )}
         </div>
       ) : top ? (
         <section className="hero">
@@ -214,6 +230,12 @@ export function Overview({ noFlash = false }) {
         <a className="powered" href="https://spherical.media" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://spherical.media'))}>
           Blink · при поддержке <b>Spherical Media</b>
         </a>
+        <div className="tg-links">
+          <a href="https://t.me/blinkmusic_live" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/blinkmusic_live'))}>Telegram-канал</a>
+          <a href="https://t.me/blinkmusic_commits" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/blinkmusic_commits'))}>Тех. ТГК</a>
+          <a href="https://t.me/SYLQENMNGR" target="_blank" rel="noopener" onClick={(e) => (e.preventDefault(), window.blink.open('https://t.me/SYLQENMNGR'))}>Менеджер</a>
+        </div>
+        <div className="copyright">© 2026 <b>SYLQEN</b></div>
       </div>
     </div>
   );
@@ -371,7 +393,7 @@ function FlashScreen({ track, on }) {
   const skipThis = () => {
     notThis(track);
     next();
-    toast('Понял, такое больше не ставлю');
+    toast('Не моё, понял: такое больше не ставлю');
   };
   return (
     <motion.section className="section" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, ease }}>
@@ -399,7 +421,7 @@ function FlashScreen({ track, on }) {
           <div className="fs-ctl">
             <Transport big />
             <button className="fs-skip" title="Больше такое не ставить во «Вспышке»" onClick={skipThis}>
-              <Icon name="thumbDown" size={17} /> Не то
+              <Icon name="thumbDown" size={17} /> Не моё
             </button>
             <button className={'icon-btn' + (liked ? ' on' : '')} title="Любимое" onClick={() => toggleLike(track)}>
               <Icon name={liked ? 'heartFill' : 'heart'} size={22} />
@@ -412,181 +434,11 @@ function FlashScreen({ track, on }) {
         </div>
         <button className="fs-art" onClick={() => store.set({ stage: true, stageTab: 'lyrics' })} title="Развернуть">
           <AnimatePresence mode="popLayout" initial={false}>
-            <motion.img key={track.id} src={photo} alt="" draggable={false} initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5, ease }} />
+            <motion.img key={track.id} src={proxied(photo)} {...coverFallback(photo)} alt="" draggable={false} initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5, ease }} />
           </AnimatePresence>
         </button>
       </div>
     </motion.section>
-  );
-}
-
-// «Вспышка» as the home screen (phone and computer), no scrolling. The background carries the mood:
-// the light in the cover's colours. On top only the cover, the track and the controls. Whatever
-// plays (a playlist, the likes, the chart) shows here the same way, captioned with where it plays
-// from. Swipe the cover for the next or previous track, tap it for the stage.
-function PhoneFlash({ shown = true }) {
-  const wave = useStore((s) => s.wave);
-  const track = useStore((s) => s.track);
-  const from = useStore((s) => s.queueFrom);
-  const playing = useStore((s) => s.status === 'playing' || s.status === 'buffering');
-  const loading = useStore((s) => s.waveLoading);
-  const liked = useStore((s) => !!track && s.likes.some((t) => t.id === track.id));
-  const mode = useStore((s) => s.settings.waveMode || 'mix');
-  const swipe = useRef(null);
-  const on = !!track && playing;
-  // The cross on the top bar turns the endless stream off (the track keeps playing, the queue
-  // just ends, and «Вспышка» doesn't follow it); «Вспышка» beside the source lights it again.
-  const stopFlash = () => {
-    store.set({ wave: false, flow: false, settings: { ...store.get().settings, flashAfter: false } });
-    toast('Вспышка выключена: доиграет то, что в очереди');
-  };
-  const igniteFlash = () => {
-    store.set({ settings: { ...store.get().settings, flashAfter: true } });
-    startWave();
-  };
-  const photo = track ? api.art(track.artwork || '', 1000) : '';
-  const names = tasteArtists()
-    .slice(0, 3)
-    .map((a) => a.name.split(/,|&| feat/i)[0].trim());
-  const hint = names.length ? `${names.join(', ')} и похожее на них` : 'Слушайте и ставьте лайки, и поток подстроится под вас';
-
-  // The mini player and the opaque top bar would only repeat or cover this screen.
-  useEffect(() => {
-    if (!shown) return;
-    document.documentElement.classList.add('phone-flash');
-    return () => document.documentElement.classList.remove('phone-flash');
-  }, [shown]);
-
-  const cover = {
-    onPointerDown: (e) => (swipe.current = { x: e.clientX, y: e.clientY }),
-    onPointerUp: (e) => {
-      const from = swipe.current;
-      swipe.current = null;
-      if (!from) return;
-      const dx = e.clientX - from.x;
-      const dy = e.clientY - from.y;
-      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy)) return dx < 0 ? next() : prev();
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) store.set({ stage: true, stageTab: 'cover' });
-    },
-  };
-  const setMode = async (m) => {
-    if (m === mode) return;
-    store.set({ settings: { ...store.get().settings, waveMode: m } });
-    const more = await waveBatch(10).catch(() => []);
-    if (!more.length) return toast('В этом режиме пока мало музыки, оставил прежнюю очередь');
-    const s = store.get();
-    store.set({ queue: [...s.queue.slice(0, s.index + 1), ...more] });
-  };
-  const skipThis = () => {
-    notThis(track);
-    next();
-    toast('Понял, такое больше не ставлю');
-  };
-
-  return (
-    <div className={'pf' + (track ? ' live' : '') + (on ? ' on' : '')}>
-      <div className="pf-bg" aria-hidden="true">
-        <div className="pf-veil" />
-      </div>
-
-      {track ? (
-        <div className="pf-body">
-          <div className={'pf-bar' + (wave ? ' live' : '')}>
-            {wave ? (
-              <>
-                <span className="pf-bar-ico" aria-hidden="true">
-                  <i />
-                  <Icon name="bolt" size={13} />
-                </span>
-                <span className="pf-bar-text">
-                  <b>Играет Вспышка</b>
-                  <em>{(WAVE_MODES.find(([k]) => k === mode) || [])[1] || 'Микс'}</em>
-                </span>
-                <button className="pf-bar-x" title="Выключить Вспышку" aria-label="Выключить Вспышку" onClick={stopFlash}>
-                  <Icon name="close" size={16} />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="pf-bar-text">
-                  <em>Играет</em>
-                  <b>{from || 'ваша музыка'}</b>
-                </span>
-                <button className="pf-bar-on" onClick={igniteFlash} disabled={loading}>
-                  <Icon name="bolt" size={14} /> Вспышка
-                </button>
-              </>
-            )}
-          </div>
-          <button className="pf-cover" aria-label="Развернуть" {...cover}>
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.img key={track.id} src={photo} alt="" draggable={false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.03 }} transition={{ duration: 0.5, ease }} />
-            </AnimatePresence>
-            <Shot track={track} />
-          </button>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={track.id} className="pf-meta" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28, ease }}>
-              <h1 className="pf-title">{track.title}</h1>
-              <div className="pf-artist">
-                <ArtistLinks track={track} />
-              </div>
-            </motion.div>
-          </AnimatePresence>
-          <div className="pf-progress">
-            <Progress showTimes />
-          </div>
-          <div className="pf-ctl">
-            {wave ? (
-              <button className="glass" title="Не то: больше такое не ставить" onClick={skipThis}>
-                <Icon name="thumbDown" size={20} />
-              </button>
-            ) : (
-              <button className="glass" title="Поделиться" onClick={() => shareTrack(track)}>
-                <Icon name="share" size={20} />
-              </button>
-            )}
-            <button className="glass" title="Назад" onClick={() => prev()}>
-              <Icon name="prev" size={24} />
-            </button>
-            <PlayButton big />
-            <button className="glass" title="Дальше" onClick={() => next()}>
-              <Icon name="next" size={24} />
-            </button>
-            <button className={'glass' + (liked ? ' on' : '')} title="Любимое" onClick={() => toggleLike(track)}>
-              <motion.span key={liked ? 'y' : 'n'} style={{ display: 'grid' }} initial={liked ? { scale: 0.6 } : false} animate={{ scale: [0.6, 1.3, 1] }} transition={{ duration: 0.35, ease }}>
-                <Icon name={liked ? 'heartFill' : 'heart'} size={22} />
-              </motion.span>
-            </button>
-          </div>
-          {wave && (
-            <div className="pf-modes" role="tablist" aria-label="Режим Вспышки">
-              {WAVE_MODES.map(([k, label]) => (
-                <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>
-                  {mode === k && <motion.span layoutId="pf-mode" className="pill" transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }} />}
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="pf-body pf-idle">
-          <span className="pf-asleep">
-            <i />
-            Вспышка спит
-          </span>
-          <h1 className="pf-hero">
-            Вспышка<span className="dot" />
-          </h1>
-          <p className="pf-hint">{hint}</p>
-          <button className="pf-ignite" onClick={igniteFlash} disabled={loading} aria-label="Зажечь Вспышку">
-            <span className="pf-ignite-ico">{loading ? <span className="spin" /> : <Icon name="bolt" size={22} />}</span>
-            <span className="pf-ignite-text">{loading ? 'Подбираю музыку' : 'Зажечь'}</span>
-          </button>
-          <p className="pf-sub">Любимое, новое от ваших артистов и музыка в том же стиле. Без конца.</p>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -757,6 +609,8 @@ function SearchResults({ q, country }) {
   const recent = useStore((s) => s.recent);
   const mp3 = useAsync(`mp3:${parserOn}:${q.toLowerCase()}`, () => (parserOn ? searchMp3(q, 10).catch(() => []) : Promise.resolve([])));
   const apiblink = useAsync(`apiblink:${q.toLowerCase()}`, () => searchApiblink(q).catch(() => []));
+  const sc = useAsync(`sc:${q.toLowerCase()}`, () => searchSoundcloud(q).catch(() => []));
+  const vk = useAsync(`vk:${q.toLowerCase()}`, () => searchVk(q).catch(() => []));
   // Other catalogs fill in what Apple doesn't have (many Russian and independent releases).
   const more = useAsync(`more:${q.toLowerCase()}`, () => searchMore(q).catch(() => []));
 
@@ -800,6 +654,41 @@ function SearchResults({ q, country }) {
       _parserUrl: item.url,
     };
   });
+  // SoundCloud: independent artists, remixes, things no other catalog has. Plays through the same
+  // direct-URL path as the other APIBlink sources.
+  const scTracks = noAi(
+    (sc.data || [])
+      .filter((item) => item.title && item.url)
+      .map((item, i) => ({
+        id: 'soundcloud:' + (item.id || q + ':' + i),
+        source: 'parser',
+        title: item.title,
+        artist: item.artist,
+        artistId: null,
+        album: '',
+        albumId: null,
+        artwork: item.artwork || '',
+        duration: item.duration || 0,
+        _parserUrl: item.url,
+      })),
+  );
+  // VK (experiment, off unless the admin flag is on): same direct-URL path as SoundCloud.
+  const vkTracks = noAi(
+    (vk.data || [])
+      .filter((item) => item.title && item.url)
+      .map((item, i) => ({
+        id: 'vk:' + (item.id || q + ':' + i),
+        source: 'parser',
+        title: item.title,
+        artist: item.artist,
+        artistId: null,
+        album: '',
+        albumId: null,
+        artwork: item.artwork || '',
+        duration: item.duration || 0,
+        _parserUrl: item.url,
+      })),
+  );
   if (error) return <ErrorBox retry={retry} />;
   if (!data) return <div className="view">{loading && <Skeleton />}</div>;
   // Blink's own releases (Spherical and partners) come first, as ordinary results.
@@ -871,6 +760,34 @@ function SearchResults({ q, country }) {
           <div className="tracks">
             {free.slice(0, 8).map((t, i) => (
               <TrackRow key={t.id} track={t} list={free} index={i} showAlbum={false} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {scTracks.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2 className="h-section">SoundCloud</h2>
+            <span className="label">независимые артисты и ремиксы</span>
+          </div>
+          <div className="tracks">
+            {scTracks.slice(0, 8).map((t, i) => (
+              <TrackRow key={t.id} track={t} list={scTracks} index={i} showAlbum={false} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {vkTracks.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2 className="h-section">VK</h2>
+            <span className="label">эксперимент</span>
+          </div>
+          <div className="tracks">
+            {vkTracks.slice(0, 8).map((t, i) => (
+              <TrackRow key={t.id} track={t} list={vkTracks} index={i} showAlbum={false} />
             ))}
           </div>
         </section>
@@ -1133,6 +1050,7 @@ export function Library() {
         <Icon name="plus" size={16} /> Перенести музыку из другого сервиса
       </button>
       <PlusPromo />
+      <FriendsStrip />
       <div className="lib-grid">
         <motion.button className="liked-tile" {...rise(1)} onClick={() => go('playlist', { id: 'likes' })}>
           <Icon name="heartFill" size={28} className="heart" />

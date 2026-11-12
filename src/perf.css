@@ -15,30 +15,20 @@
 /* A full-screen overlay blend on top of everything repainted the whole window on any change. */
 .grain { display: none; }
 
-/* «Вспышка»: no animated or blurred background, only a still glow in the accent colour. */
-.pf-bg {
-  background:
-    radial-gradient(75% 46% at 50% 16%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%),
-    radial-gradient(70% 42% at 50% 104%, color-mix(in srgb, var(--gB) 38%, transparent), transparent 76%);
-}
-.pf-veil, .pf-aura ~ .pf-veil, .pf-waves ~ .pf-veil {
-  background: radial-gradient(120% 80% at 50% 40%, transparent 45%, rgba(8, 7, 10, 0.7));
-  mix-blend-mode: normal;
-}
-.pf-aura, .pf-waves, .pf-gl, .pf-bg > img, .flash-waves, .flash-gl, .fs-bg { display: none !important; }
+.flash-waves, .flash-gl, .fs-bg { display: none !important; }
 .flash::after { display: none; }
 
 /* Blur-behind is repainted under every scrolling list and progress bar: off, with the surfaces
    made a little more solid so the text on them stays readable. */
 .nav, .capsule, .progress .tip, .cover-edit-ico, .flash-screen .fs-next, .fs-modes button,
-.pf-ctl .glass, .pf-modes, .pf-bar, .pf-ignite, .install-hint, .titlebar::before, .titlebar .nav::before {
+.install-hint, .titlebar::before, .titlebar .nav::before {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 /* backdrop-filter also made these their own stacking context (children with z-index: -1 stay
    inside them): keep that without the blur. */
 .nav, .capsule, .progress .tip, .cover-edit-ico, .flash-screen .fs-next, .fs-modes button,
-.pf-ctl .glass, .pf-modes, .pf-bar, .pf-ignite, .install-hint { isolation: isolate; }
+.install-hint { isolation: isolate; }
 .nav { background: rgba(21, 19, 26, 0.92); }
 .capsule { background: color-mix(in srgb, var(--ink-2) 96%, transparent); }
 .titlebar::before { background: linear-gradient(180deg, rgba(13, 12, 16, 0.96) 0%, rgba(13, 12, 16, 0.7) 60%, transparent 100%); }
@@ -87,13 +77,13 @@ html[data-bg='1'] *, html[data-bg='1'] *::before, html[data-bg='1'] *::after { a
 }
 
 /* Looping track video over the cover (ui/Shot.jsx) */
-.stage-cover, .pf-cover { position: relative; }
+.stage-cover { position: relative; }
 .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.7s ease; pointer-events: none; border-radius: inherit; z-index: 1; }
 .shot.on { opacity: 1; }
 
 /* iPhone lag on leaving the full-screen player and on sheets: a full-screen blur-behind that has
    to be re-rendered while the screen animates away. Solid surfaces instead. */
-.stage { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: rgba(13, 12, 16, 0.96); }
+.stage { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: var(--ink, #0b0a0d); }
 @media (max-width: 760px) {
   .scrim, .confirm, .menu, .sheet { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   .scrim { background: rgba(8, 7, 10, 0.78); }
@@ -101,3 +91,13 @@ html[data-bg='1'] *, html[data-bg='1'] *::before, html[data-bg='1'] *::after { a
   /* shared-cover spring on leaving the stage is a layout animation on the main thread: keep it short */
   .stage, .stage * { will-change: auto; }
 }
+
+/* Full-screen player: while nobody touches it the track video fills the screen; a tap or a
+   mouse move brings the controls back and the video fades out (the .idle class, see Stage.jsx). */
+.stage { isolation: isolate; }
+.stage-shot { filter: brightness(0.75); z-index: -1; border-radius: 0; transition: opacity 1s ease; }
+.stage-shot.on { opacity: 0; }
+.stage.idle .stage-shot.on { opacity: 1; }
+.stage-shot::after { content: none; }
+
+/* phone stage: the clip shows behind the player, the controls stay visible */

@@ -51,12 +51,13 @@ function chime() {
 }
 
 export function launchFeel() {
-  if (window.blink && !window.blink.isWeb) {
+  // The PC app chimes; a phone (site or app) gives a short buzz.
+  if (window.blink && !window.blink.isWeb && !window.blink.mobile) {
     if (store.get().settings.startSound !== false) chime();
   } else buzz([14, 50, 10]);
 }
 
-const TAP = '.nav .tab, .iris, .icon-btn, .btn, .pf-ctl .glass, .pf-modes button, .set-tabs button, .avatar-btn';
+const TAP = '.nav .tab, .iris, .icon-btn, .btn, .hm-b, .hm-modes button, .hm-pill-x, .set-tabs button, .avatar-btn';
 export function initHaptics() {
   if (!coarse) return;
   document.addEventListener('pointerdown', (e) => e.target.closest && e.target.closest(TAP) && buzz(6), { passive: true });

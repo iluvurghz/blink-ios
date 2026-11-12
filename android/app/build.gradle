@@ -1,0 +1,83 @@
+apply plugin: 'com.android.application'
+
+import groovy.json.JsonSlurper
+
+// The app's version is the site's (package.json); the build number comes from CI (-PblinkBuild=N).
+def siteVersion = new JsonSlurper().parse(rootProject.file('../package.json')).version
+def blinkBuild = (project.findProperty('blinkBuild') ?: '1') as Integer
+
+android {
+    namespace = "app.blink.player"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "app.blink.player"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Above the old Kotlin alpha builds (they used the run number), so this one installs over them.
+        versionCode 1000 + blinkBuild
+        versionName siteVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // The debug.keystore key is the well-known one: it lets CI builds install over each other (saved tracks
+    // and the sign-in stay). Stores will get a key of their own.
+    signingConfigs {
+        blink {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.blink
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.blink
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        // Like release, under the alpha's id (app.blink.player.alpha): installs over the test builds already on phones.
+        alpha {
+            initWith release
+            applicationIdSuffix '.alpha'
+            versionNameSuffix '-alpha'
+            debuggable false
+            matchingFallbacks = ['release']
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

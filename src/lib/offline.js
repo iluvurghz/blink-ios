@@ -4,6 +4,7 @@
 import { store, toast, go } from './store.js';
 import { playUrl } from './catalog.js';
 import { findMp3 } from './apiparser.js';
+import { findApiblink } from './apiblink.js';
 
 const DB = 'blink-offline';
 let dbp = null;
@@ -60,6 +61,12 @@ async function sourceUrl(track) {
   if (track.source === 'blink') return playUrl(track.lic);
   if (track.source === 'jamendo') return track.stream;
   if (track.source === 'parser' && track._parserUrl) return track._parserUrl;
+  // Try APIBlink (Yandex Music) first — the same source the player uses for most tracks.
+  if (track.source === 'apiblink' || store.get().apiblinkEnabled !== false) {
+    const r = await findApiblink(track.title, track.artist);
+    if (r && r.url) return r.url;
+  }
+  // Fall back to the MP3 parser.
   const r = await findMp3(track.title, track.artist);
   return r && r.url;
 }
@@ -76,7 +83,33 @@ const publish = (patch = {}) => {
   store.set({ dl: { ...d, ids, cur: ids[0] || null, pct: part && part.size ? part.got / part.size : 0, total: d.done + ids.length } });
 };
 
+// In the app the main process streams the file to disk and resumes it from the .part file.
+async function downloadToDisk(track) {
+  if (!part || part.id !== track.id) part = { id: track.id, url: null, chunks: [], got: 0, size: 0 };
+  if (!part.url) part.url = await sourceUrl(track);
+  if (!part.url) throw new Error('нет файла');
+  part.ctl = { abort: () => disk.abort(track.id) };
+  const off = disk.onProgress((p) => {
+    if (p.id !== track.id) return;
+    part.got = p.got;
+    part.size = p.total;
+    publish();
+  });
+  try {
+    const r = await disk.download(track.id, part.url);
+    if (!r.ok) {
+      if (r.aborted) throw Object.assign(new Error('abort'), { name: 'AbortError' });
+      throw new Error(r.error || 'не скачалось');
+    }
+  } finally {
+    off();
+  }
+  await ready();
+  store.set({ saved: [track, ...(store.get().saved || []).filter((t) => t.id !== track.id)] });
+}
+
 async function download(track) {
+  if (disk && disk.download) return downloadToDisk(track);
   if (!part || part.id !== track.id) part = { id: track.id, url: null, chunks: [], got: 0, size: 0 };
   part.ctl = new AbortController();
   if (!part.url) part.url = await sourceUrl(track);
@@ -167,14 +200,17 @@ export function resumeDownloads() {
   pump();
 }
 export function cancelDownloads() {
+  const ids = queue.map((t) => t.id);
   queue = [];
   if (part && part.ctl) part.ctl.abort();
+  if (disk && disk.discard) ids.forEach((id) => disk.discard(id));
   part = null;
   store.set({ dl: null });
 }
 // Takes one track out of the queue (the current one stops).
 export function unqueue(id) {
   if (queue[0] && queue[0].id === id && part && part.ctl) part.ctl.abort();
+  if (disk && disk.discard) disk.discard(id);
   queue = queue.filter((t) => t.id !== id);
   if (!queue.length) return cancelDownloads();
   if (part && part.id === id) part = null;
@@ -195,6 +231,11 @@ const live = [];
 export async function savedUrl(id) {
   if (!isSaved(id) || !hasPlus()) return null;
   await ready();
+  // In the app the file plays straight from disk (seekable, not loaded into memory).
+  if (disk && disk.url) {
+    const u = await disk.url(id).catch(() => null);
+    if (u) return u;
+  }
   const blob = await files.get(id).catch(() => null);
   if (!blob) return null;
   const url = URL.createObjectURL(blob);

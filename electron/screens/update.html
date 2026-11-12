@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:">
+<title>Обновление Blink</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 05: an update downloaded in the background, offered over the running app */
+.bar{-webkit-app-region:drag} .ctrls{-webkit-app-region:no-drag}
+.body{position:absolute;inset:42px 0 0 0;padding:0 36px 28px;display:flex;flex-direction:column}
+.top{margin-top:14px;display:flex;align-items:center;justify-content:space-between}
+.ver{display:flex;align-items:center;gap:10px;font-family:var(--display);font-size:13px;color:var(--faint)}
+.ver b{font-weight:500;color:var(--text);font-size:22px;letter-spacing:-.02em}
+.ver svg{width:16px;height:16px;stroke:var(--faint);stroke-width:1.6;fill:none}
+.pill{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:rgba(20,19,26,.07);padding:4px 9px;border-radius:99px}
+.chg{list-style:none;margin:18px 0 0;padding:0;display:grid;gap:8px}
+.chg li{display:flex;gap:12px;align-items:flex-start;font-size:13.5px;color:var(--mute);line-height:1.5}
+.chg li b{color:var(--text);font-weight:600}
+.chg li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:8px;flex:none}
+.mini-track{height:4px;border-radius:99px;background:rgba(20,19,26,.08);position:relative;overflow:hidden;width:150px}
+.mini-track i{position:absolute;inset:0 auto 0 0;width:0;background:var(--accent);border-radius:99px;transition:width .9s var(--ease-out) .2s}
+body.ready .mini-track i{width:100%}
+body.out .win{opacity:0;transform:scale(.985);transition:opacity .25s var(--ease-out),transform .25s var(--ease-out)}
+</style>
+</head>
+<body class="ink">
+<div class="win">
+  <div class="amb"><i class="a"></i><i class="b"></i><i class="c"></i></div><div class="grain"></div>
+  <div class="bar"><div class="mini">blink<span class="tag">Обновление</span></div><div class="ctrls"><button id="x" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div></div>
+  <div class="body">
+    <div class="top"><div class="ver"><span id="from"></span><svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg><b id="to"></b></div><span class="pill">Скачано</span></div>
+    <ul class="chg" id="chg"></ul>
+    <div class="foot"><div class="mini-track"><i></i></div><div class="pair"><button class="ghost" id="later">Позже</button><button class="btn" id="restart">Перезапустить</button></div></div>
+  </div>
+</div>
+<script src="update.js"></script>
+</body>
+</html>

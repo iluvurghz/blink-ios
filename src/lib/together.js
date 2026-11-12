@@ -8,10 +8,12 @@ import { cloud } from './cloud.js';
 import { playTrack, toggle, seek, userActions } from './player.js';
 
 const SITE = 'https://blinkmusic.cc/';
-export const togetherLink = (code) => `${SITE}?together=${code}`;
+// blinkmusic.cc/r/<code>: opens with a preview card (server/shareRoute.js); the old ?together=<code> keeps working.
+export const togetherLink = (code) => `${SITE}r/${code}`;
 
 let room = null; // last room state from the server
 let offset = 0; // server clock minus ours, ms
+let clockOffset = null; // same, measured by round trips (fastest of a few); wins when known
 let applying = false; // true while we follow the room, so that isn't sent back as our own action
 let lastId = null;
 
@@ -64,9 +66,12 @@ function update(r) {
   const me = store.get().user && store.get().user.id;
   if (store.get().sheet !== 'together' && room.rev) for (const c of r.chat || []) if (!seen.has(c.id) && c.by !== me) toast(`${c.name}: ${c.text}`);
   room = r;
-  offset = r.now - Date.now();
-  store.set({ together: { code: r.code, members: r.members || [], chat: r.chat || [] } });
+  offset = clockOffset != null ? clockOffset : r.now - Date.now();
+  store.set({ together: { code: r.code, members: r.members || [], chat: r.chat || [], host: r.host, mode: r.mode || 'all', reactions: r.reactions || [], skips: r.skips || [] } });
   follow(r);
+  // Tracks others added to the room's queue show up in this player's queue as well.
+  const cur = store.get();
+  if (r.track && cur.track && cur.track.id === r.track.id && (r.queue || []).length !== (cur.queue || []).length) store.set({ queue: r.queue, index: r.index });
 }
 
 async function send(patch) {
@@ -76,11 +81,73 @@ async function send(patch) {
   try {
     const { status, data } = await call(`/api/together/${room.code}`, body);
     if (status === 200 || status === 409) update(data);
-    else if (status === 404 || status === 403) end(data.error);
+    else if (status === 403 && data.code) {
+      update(data); // host-only room: snap back to what the room plays
+      toast(data.error || 'Управляет хост комнаты');
+    } else if (status === 404 || status === 403) end(data.error);
   } catch {}
 }
 
+// Push channel (SSE over fetch, so the auth header works): the room arrives the moment anything changes.
+async function stream(code) {
+  const { data } = cloud ? await cloud.auth.getSession() : { data: {} };
+  const t = data && data.session ? data.session.access_token : null;
+  const res = await fetch(`${MEDIA}/api/together/${code}/stream`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+  if (res.status === 404 || res.status === 403 || res.status === 401) {
+    const d = await res.json().catch(() => ({}));
+    return { gone: d.error || 'Комната закрыта' };
+  }
+  if (!res.ok || !res.body) throw new Error('no stream');
+  const rd = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (room && room.code === code) {
+    const { value, done } = await rd.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      if (chunk.startsWith('data: ')) update(JSON.parse(chunk.slice(6)));
+    }
+  }
+  rd.cancel().catch(() => {});
+  return {};
+}
+
+// Server clock minus ours, from the fastest of a few round trips, so network delay cancels out.
+async function syncClock() {
+  let best = null;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const a = performance.now();
+      const { data } = await call('/api/together/time');
+      const rtt = performance.now() - a;
+      if (data.now && (!best || rtt < best.rtt)) best = { rtt, off: data.now + rtt / 2 - Date.now() };
+    } catch {}
+  }
+  if (best) clockOffset = best.off;
+}
+
 async function loop(code) {
+  syncClock();
+  let fails = 0;
+  while (room && room.code === code && fails < 3) {
+    try {
+      const r = await stream(code);
+      if (r.gone) return end(r.gone);
+      fails = 0;
+      await new Promise((f) => setTimeout(f, 500));
+    } catch {
+      fails++;
+      await new Promise((f) => setTimeout(f, 1500));
+    }
+  }
+  poll(code); // old server or blocked stream: long poll still works
+}
+
+async function poll(code) {
   while (room && room.code === code) {
     try {
       const { status, data } = await call(`/api/together/${code}?r=${room.rev}`);
@@ -138,6 +205,42 @@ export async function sendChat(text) {
   }
   toast((data && data.error) || 'Сообщение не отправилось', 'error');
   return false;
+}
+
+export async function sendReaction(emoji) {
+  if (!room) return;
+  const { status, data } = await call(`/api/together/${room.code}/react`, { emoji }).catch(() => ({}));
+  if (status === 200) update(data);
+}
+
+export async function setMode(mode) {
+  if (!room) return;
+  const { status, data } = await call(`/api/together/${room.code}/mode`, { mode }).catch(() => ({}));
+  if (status === 200) update(data);
+  else toast((data && data.error) || 'Не получилось', 'error');
+}
+
+export const inRoom = () => !!room;
+
+// Adds a track to the room's shared queue (it plays when its turn comes, for everybody).
+export async function addToRoomQueue(track) {
+  if (!room) return false;
+  const { status, data } = await call(`/api/together/${room.code}/queue`, { track }).catch(() => ({}));
+  if (status === 200) {
+    update(data);
+    toast('Добавлено в очередь комнаты');
+    return true;
+  }
+  toast((data && data.error) || 'Не получилось добавить', 'error');
+  return false;
+}
+
+// Vote to skip the current track; when more than half of the room votes, it moves on for everybody.
+export async function voteSkip() {
+  if (!room) return;
+  const { status, data } = await call(`/api/together/${room.code}/skip`, {}).catch(() => ({}));
+  if (status === 200 || status === 409) update(data);
+  if (status === 409 || status >= 400) toast((data && data.error) || 'Не получилось', 'error');
 }
 
 export function leaveRoom() {
