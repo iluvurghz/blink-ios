@@ -108,6 +108,7 @@ class Graph(val app: Application) {
     val support = SupportApi(http, config, auth)
     val cabinet = CabinetApi(http, config, auth)
     val lastfm = LastfmApi(http, config)
+    val stage = app.blink.player.ui.StageModel(http, config, auth, prefs, scope)
     val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
     /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
     val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)
@@ -192,6 +193,10 @@ class Graph(val app: Application) {
                     friends.refresh()
                 }
             }
+        }
+        // Новый трек: плееру нужны палитра обложки, текст и фото артиста.
+        scope.launch {
+            player.state.map { it.track }.distinctUntilChanged { a, b -> a?.id == b?.id }.collect { stage.trackChanged(it) }
         }
         // Плеер сменил трек или состояние: сообщаем комнате (если это не мы его подогнали) и друзьям.
         scope.launch {

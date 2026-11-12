@@ -7,8 +7,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -82,21 +86,8 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Overlay.None -> Unit
         }
 
-        // Одна панель во всю ширину: сверху мини-плеер (если что-то играет), под ним вкладки. Фон уходит под системную панель.
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(Ink.ink2)
-                .drawBehind { drawRect(Ink.line2, size = androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx())) }
-                .navigationBarsPadding(),
-        ) {
-            if (player.track != null) {
-                MiniPlayer(g, player)
-                Box(Modifier.fillMaxWidth().height(1.dp).background(Ink.line))
-            }
-            BottomBar(tab, downloading) { g.nav.go(it) }
-        }
+        // Как на сайте в узком окне: снизу затемнение, над ним капсула мини-плеера и плавающий док.
+        Chrome(g, tab, downloading, player, hidden = playerOpen && player.track != null)
 
         AnimatedVisibility(
             visible = playerOpen && player.track != null,
@@ -109,77 +100,134 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         PlaylistPicker(g)
         TrackInfoSheet(g)
 
-        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 142 else 80)
+        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 170 else 90)
     }
 }
 
 @Composable
-private fun BottomBar(tab: Tab, downloading: Boolean, onTab: (Tab) -> Unit) {
+private fun BoxScope.Chrome(g: Graph, tab: Tab, downloading: Boolean, ui: PlayerUi, hidden: Boolean) {
+    val palette by g.stage.palette.collectAsStateWithLifecycle()
+    val accent by androidx.compose.animation.animateColorAsState(palette.accent.color(), tween(1200), label = "chromeAccent")
+    val glowA = palette.glowA
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .graphicsLayer { alpha = if (hidden) 0f else 1f },
+    ) {
+        // Затемнение под доком, чтобы список не спорил с панелью (.m-dock::before).
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to Color(0x0008070A),
+                        0.35f to Color(0xB308070A),
+                        1f to Color(0xF208070A),
+                    ),
+                ),
+        )
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 18.dp, bottom = 10.dp)) {
+            if (ui.track != null) {
+                MiniCapsule(g, ui, accent, palette.accentInk.color(), glowA.mix(0.34f, Color(16, 14, 19, 209)))
+                Spacer(Modifier.height(10.dp))
+            }
+            Dock(tab, downloading, accent, glowA.mix(0.16f, Color(18, 16, 22, 240))) { g.nav.go(it) }
+        }
+    }
+}
+
+/** Плавающий док: четыре значка без подписей, выбранный в мягкой светящейся капсуле цвета акцента. */
+@Composable
+private fun Dock(tab: Tab, downloading: Boolean, accent: Color, bg: Color, onTab: (Tab) -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
     Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .shadow(18.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(shape)
+            .background(bg)
+            .border(1.dp, Color(0x14FFFFFF), shape)
+            .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TabItem(Glyphs.Bolt, "Вспышка", tab == Tab.Flash, false, Modifier.weight(1f)) { onTab(Tab.Flash) }
-        TabItem(Glyphs.Search, "Поиск", tab == Tab.Search, false, Modifier.weight(1f)) { onTab(Tab.Search) }
-        TabItem(Glyphs.Download, "Скачанное", tab == Tab.Downloads, downloading, Modifier.weight(1f)) { onTab(Tab.Downloads) }
-        TabItem(Glyphs.Person, "Профиль", tab == Tab.Account, false, Modifier.weight(1f)) { onTab(Tab.Account) }
+        DockItem(LineIcons.Bolt, "Вспышка", tab == Tab.Flash, false, accent, Modifier.weight(1f)) { onTab(Tab.Flash) }
+        DockItem(LineIcons.Search, "Поиск", tab == Tab.Search, false, accent, Modifier.weight(1f)) { onTab(Tab.Search) }
+        DockItem(LineIcons.Download, "Скачанное", tab == Tab.Downloads, downloading, accent, Modifier.weight(1f)) { onTab(Tab.Downloads) }
+        DockItem(LineIcons.User, "Профиль", tab == Tab.Account, false, accent, Modifier.weight(1f)) { onTab(Tab.Account) }
     }
 }
 
-/** Значок над подписью. Выбранная вкладка: акцентный цвет и мягкая капсула под значком. Подписи видны всегда. */
 @Composable
-private fun TabItem(glyph: Glyphs, label: String, active: Boolean, dot: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Column(
+private fun DockItem(icon: LineIcons, label: String, active: Boolean, dot: Boolean, accent: Color, modifier: Modifier, onClick: () -> Unit) {
+    val fill by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else 0f, tween(220), label = "dock")
+    val shape = RoundedCornerShape(20.dp)
+    Box(
         modifier
-            .height(64.dp)
-            .semantics { contentDescription = label }
-            .tap(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .fillMaxHeight()
+            .semantics { contentDescription = label; selected = active }
+            .pressTap(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.width(56.dp).height(30.dp).clip(CircleShape).background(if (active) Ink.accentSoft else Color.Transparent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Glyph(glyph, color = if (active) Ink.accent else Ink.mute, dp = 22.dp)
-            if (dot) {
-                Box(Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 10.dp).size(8.dp).clip(CircleShape).background(Ink.accent))
-            }
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp)
+                .graphicsLayer { alpha = fill }
+                .shadow(14.dp * fill, shape, ambientColor = accent, spotColor = accent)
+                .clip(shape)
+                .background(accent.copy(alpha = 0.2f)),
+        )
+        LineIcon(icon, color = if (active) accent else Ink.bone.copy(alpha = 0.55f), dp = 26.dp)
+        if (dot) {
+            Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 18.dp).size(7.dp).clip(CircleShape).background(accent))
         }
-        Spacer(Modifier.height(3.dp))
-        T(label, style = Type.label.copy(fontSize = 11.sp, letterSpacing = 0.2.sp), color = if (active) Ink.accent else Ink.mute, maxLines = 1, align = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
-/** Строка мини-плеера внутри панели: обложка, название, пауза и следующий; тонкая полоска хода на верхней кромке. */
+/** Капсула мини-плеера (.m-mini): обложка, название и артист, сердце, кнопка играть; ход трека заливкой фона. Свайп в стороны листает треки. */
 @Composable
-private fun MiniPlayer(g: Graph, ui: PlayerUi) {
+private fun MiniCapsule(g: Graph, ui: PlayerUi, accent: Color, accentInk: Color, bg: Color) {
     val track = ui.track ?: return
+    val library by g.library.state.collectAsStateWithLifecycle()
+    val liked = remember(library, track.id) { g.library.isLiked(track.id) }
+    val shape = RoundedCornerShape(22.dp)
+    var dx by remember { mutableStateOf(0f) }
+    val fraction = if (ui.durationMs > 0) (ui.positionMs.toFloat() / ui.durationMs).coerceIn(0f, 1f) else 0f
     Box(
         Modifier
             .fillMaxWidth()
-            .height(62.dp)
+            .height(72.dp)
+            .graphicsLayer { translationX = dx * 0.4f }
+            .shadow(16.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(shape)
+            .background(bg)
+            .drawBehind { drawRect(accent.copy(alpha = 0.26f), size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height)) }
+            .border(1.dp, Color(0x14FFFFFF), shape)
+            .pointerInput(track.id) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (dx < -80f) g.player.next() else if (dx > 80f) g.player.previous()
+                        dx = 0f
+                    },
+                    onDragCancel = { dx = 0f },
+                ) { _, d -> dx += d }
+            }
+            .semantics { contentDescription = "Открыть плеер" }
             .tap { g.nav.openPlayer(true) },
     ) {
-        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(track.artwork, Modifier.size(44.dp), radius = 10.dp, noteDp = 20.dp)
+        Row(Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            NetImage(app.blink.core.ui.ArtUrl.scaled(track.artwork, 160), Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                T(track.title, style = Type.title.copy(fontSize = 14.sp), maxLines = 1)
-                T(track.artist, style = Type.small, color = Ink.mute, maxLines = 1)
+                T(track.title, style = Type.title.copy(fontFamily = Unbounded, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, fontSize = 17.sp, letterSpacing = (-0.2).sp), maxLines = 1)
+                Spacer(Modifier.height(2.dp))
+                T(track.artist, style = Type.small, color = Ink.bone.copy(alpha = 0.6f), maxLines = 1)
             }
-            IconButton(if (ui.playing) Glyphs.Pause else Glyphs.Play, if (ui.playing) "Пауза" else "Играть", { g.player.toggle() }, dp = 26.dp)
-            IconButton(Glyphs.Next, "Следующий", { g.player.next() }, enabled = ui.hasNext)
+            StageIcon(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", { g.flash.toggleLike(track) }, dp = 22.dp, box = 44.dp, on = liked, accent = accent)
+            PlayIris(ui.playing, ui.buffering, 48.dp, accent, accentInk, glow = false) { g.player.toggle() }
         }
-        val fraction = if (ui.durationMs > 0) (ui.positionMs.toFloat() / ui.durationMs).coerceIn(0f, 1f) else 0f
-        Box(
-            Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .height(2.dp)
-                .graphicsLayer { scaleX = fraction; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
-                .background(Ink.accent),
-        )
     }
 }
 

@@ -168,6 +168,38 @@ def screen_size():
     return (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
 
 
+def tap_label(label, wait=0):
+    nodes, n = wait_for(label, wait) if wait else (dump(), None)
+    n = n or find(nodes, label)
+    if not n:
+        log(f"не нашёл «{label}»")
+        return False
+    tap(*n.center)
+    return True
+
+
+def player_steps():
+    """Большой плеер как на сайте: обложка, текст на карточке, текст во весь экран, очередь, мини-плеер."""
+    if not find(dump(), "Свернуть") and not tap_label("Открыть плеер", 10):
+        return
+    time.sleep(5)
+    step("06-player", dump())
+    if tap_label("Показать текст", 25):
+        time.sleep(4)
+        step("07-lyrics", dump())
+        if tap_label("Весь текст"):
+            time.sleep(3)
+            step("08-lyrics-full", dump())
+            tap_label("Свернуть текст")
+            time.sleep(1)
+    if tap_label("Очередь"):
+        time.sleep(3)
+        step("09-queue", dump())
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    time.sleep(3)
+    step("10-mini", dump())
+
+
 def main():
     apks = sorted(glob.glob("apk/*.apk"))
     if not apks:
@@ -219,6 +251,7 @@ def main():
                 tap(*rows[0].center)
                 time.sleep(8)  # старт воспроизведения онлайн
                 step("05-after-tap-on-track", dump())
+                player_steps()
             else:
                 log("строки результатов не нашли, пропускаю шаг с воспроизведением")
         else:
