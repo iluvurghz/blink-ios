@@ -122,8 +122,9 @@ private fun BoxScope.Chrome(g: Graph, tab: Tab, downloading: Boolean, ui: Player
                 .background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
                         0f to Color(0x0008070A),
-                        0.35f to Color(0xB308070A),
-                        1f to Color(0xF208070A),
+                        0.3f to Color(0xC208070A),
+                        0.6f to Color(0xF508070A),
+                        1f to Color(0xFF08070A),
                     ),
                 ),
         )

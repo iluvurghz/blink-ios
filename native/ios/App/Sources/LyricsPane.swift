@@ -183,6 +183,8 @@ private struct SyncedLyrics: View {
                 VStack(alignment: center ? .center : .leading, spacing: 0) {
                     ForEach(rows.indices, id: \.self) { i in
                         row(i, active: active, count: count, t: t, base: base, big: big)
+                            .padding(.horizontal, center ? 18 : 0)
+                            .frame(width: w)
                             .background(GeometryReader { g in
                                 Color.clear.preference(key: RowMid.self, value: [i: g.frame(in: .named("lyr")).midY])
                             })
@@ -232,9 +234,13 @@ private struct SyncedLyrics: View {
             Button(action: { onSeek(Int64(max(0, r.t + 0.05) * 1000)) }) {
                 VStack(alignment: center ? .center : .leading, spacing: 6) {
                     lineText(r, on: on, past: past, t: t, size: on ? big : base)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let tt = translated {
                         Text(tt).font(.custom("Manrope-SemiBold", fixedSize: (on ? big : base) * 0.46))
                             .foregroundColor(Ink.bone.opacity(on ? 0.7 : past ? 0.2 : 0.38))
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .multilineTextAlignment(center ? .center : .leading)
