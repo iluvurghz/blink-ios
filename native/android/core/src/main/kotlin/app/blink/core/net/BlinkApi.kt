@@ -122,6 +122,13 @@ class BlinkApi(
         return songs(url)
     }
 
+    /** Трек Apple по числовому id (из ссылки `/t/<id>`); null, если не нашли. */
+    suspend fun lookup(id: String): Track? {
+        val url = config.base.toHttpUrl().newBuilder().addPathSegments("api/itunes/lookup")
+            .addQueryParameter("id", id).addQueryParameter("country", "ru").addQueryParameter("entity", "song").build()
+        return songs(url).firstOrNull()
+    }
+
     private suspend fun yandex(q: String, limit: Int): List<Track> {
         val url = config.base.toHttpUrl().newBuilder().addPathSegments("api/yandex/search")
             .addQueryParameter("q", q)

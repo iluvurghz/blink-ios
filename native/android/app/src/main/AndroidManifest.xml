@@ -45,6 +45,25 @@
                 <data android:host="www.blinkmusic.cc" />
                 <data android:host="t.blinkmusic.cc" />
                 <data android:pathPrefix="/r/" />
+                <data android:pathPrefix="/p/" />
+                <data android:pathPrefix="/t/" />
+                <data android:pathPrefix="/u/" />
+            </intent-filter>
+            <!-- Короткие ссылки на треки: https://t.blinkmusic.cc/<код> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="t.blinkmusic.cc" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="playlist" />
+                <data android:host="together" />
+                <data android:host="friend" />
             </intent-filter>
         </activity>
 

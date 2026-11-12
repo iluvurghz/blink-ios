@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import app.blink.core.library.DeepLink
 import app.blink.core.social.FriendsApi
 import app.blink.core.social.RoomSession
 import app.blink.player.ui.BlinkRoot
@@ -41,7 +42,7 @@ class MainActivity : ComponentActivity() {
     private fun handleLink(intent: Intent?) {
         val data = intent?.data ?: return
         val url = data.toString()
-        if (data.scheme == "blink") return graph.finishSignIn(url)
+        if (data.scheme == "blink" && data.host == "auth") return graph.finishSignIn(url)
         RoomSession.codeFrom(url)?.let { code ->
             if (graph.auth.session.value == null) {
                 graph.toasts.show("Войдите, чтобы слушать вместе")
@@ -55,6 +56,13 @@ class MainActivity : ComponentActivity() {
         FriendsApi.codeFrom(url)?.let { code ->
             graph.nav.open(Overlay.Friends)
             graph.scope.launch { graph.friends.accept(code) }
+            return
+        }
+        when (val link = DeepLink.parse(url)) {
+            is DeepLink.Playlist -> graph.nav.openLibrary(LibRoute.Shared(link.code))
+            is DeepLink.Track -> graph.scope.launch { graph.openSharedTrack(link) }
+            is DeepLink.Artist -> graph.actions.openUrl("https://blinkmusic.cc/u/" + link.who)
+            else -> Unit
         }
     }
 

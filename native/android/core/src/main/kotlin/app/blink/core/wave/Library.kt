@@ -8,6 +8,7 @@ import app.blink.core.net.arr
 import app.blink.core.net.obj
 import app.blink.core.net.parseObject
 import app.blink.core.net.str
+import app.blink.core.net.long
 import app.blink.core.net.text
 import app.blink.core.net.withCallTimeout
 import java.io.IOException
@@ -35,6 +36,9 @@ data class LibraryData(
     val recent: List<JsonObject> = emptyList(),
     val extra: JsonObject = JsonObject(emptyMap()),
 )
+
+/** Плейлист пользователя. */
+data class Playlist(val id: String, val name: String, val created: Long, val tracks: List<Track>, val cover: String?)
 
 /** Лайки и недавнее на устройстве. Основа вкуса Вспышки и синка с сайтом. Новые треки первыми, как на сайте. */
 class LibraryStore(private val blob: BlobStore) : Library {
@@ -102,6 +106,73 @@ class LibraryStore(private val blob: BlobStore) : Library {
         commit(cur.copy(recent = (listOf(raw(track)) + cur.recent.filter { it.str("id") != track.id }).take(RECENT_MAX)))
     }
 
+    // ---------- плейлисты (лежат в `extra.playlists`, как у сайта: {id, name, tracks, created, cover?}) ----------
+
+    private fun rawPlaylists(d: LibraryData = flow.value): List<JsonObject> = d.extra["playlists"].arr().orEmpty().mapNotNull { it.obj() }
+
+    private fun withPlaylists(d: LibraryData, list: List<JsonObject>): LibraryData = d.copy(extra = JsonObject(d.extra + ("playlists" to JsonArray(list))))
+
+    private fun toPlaylist(o: JsonObject): Playlist? {
+        val id = o.str("id") ?: return null
+        return Playlist(id, o.str("name").orEmpty(), o.long("created") ?: 0L, decode(o["tracks"].arr().orEmpty().mapNotNull { it.obj() }), o.str("cover"))
+    }
+
+    /** Мои плейлисты, новые первыми. */
+    val playlists: List<Playlist> get() = rawPlaylists().mapNotNull(::toPlaylist)
+
+    fun playlist(id: String): Playlist? = rawPlaylists().firstOrNull { it.str("id") == id }?.let(::toPlaylist)
+
+    @Synchronized
+    fun createPlaylist(name: String, tracks: List<Track> = emptyList(), now: Long = System.currentTimeMillis()): Playlist {
+        val id = "p" + now.toString(36)
+        val title = name.trim().ifEmpty { "Новый плейлист" }
+        val o = buildJsonObject {
+            put("id", JsonPrimitive(id))
+            put("name", JsonPrimitive(title))
+            put("tracks", JsonArray(tracks.map(::raw)))
+            put("created", JsonPrimitive(now))
+        }
+        commit(withPlaylists(flow.value, listOf(o) + rawPlaylists()))
+        return Playlist(id, title, now, tracks, null)
+    }
+
+    /** false, если такой трек в плейлисте уже есть. */
+    @Synchronized
+    fun addToPlaylist(pid: String, track: Track): Boolean {
+        val cur = flow.value
+        var added = false
+        val next = rawPlaylists(cur).map { p ->
+            if (p.str("id") != pid) return@map p
+            val tr = p["tracks"].arr().orEmpty()
+            if (tr.any { it.obj()?.str("id") == track.id }) return@map p
+            added = true
+            JsonObject(p + ("tracks" to JsonArray(tr + raw(track))))
+        }
+        if (added) commit(withPlaylists(cur, next))
+        return added
+    }
+
+    @Synchronized
+    fun removeFromPlaylist(pid: String, trackId: String) {
+        val cur = flow.value
+        commit(withPlaylists(cur, rawPlaylists(cur).map { p ->
+            if (p.str("id") != pid) p else JsonObject(p + ("tracks" to JsonArray(p["tracks"].arr().orEmpty().filter { it.obj()?.str("id") != trackId })))
+        }))
+    }
+
+    @Synchronized
+    fun renamePlaylist(pid: String, name: String) {
+        val cur = flow.value
+        val title = name.trim().ifEmpty { return }
+        commit(withPlaylists(cur, rawPlaylists(cur).map { p -> if (p.str("id") != pid) p else JsonObject(p + ("name" to JsonPrimitive(title))) }))
+    }
+
+    @Synchronized
+    fun deletePlaylist(pid: String) {
+        val cur = flow.value
+        commit(withPlaylists(cur, rawPlaylists(cur).filter { it.str("id") != pid }))
+    }
+
     /** Слияние с копией с сервера (как `pull` на сайте): локальное первым, затем чужое без повторов по id. */
     @Synchronized
     fun mergeRemote(data: JsonObject) {
@@ -109,7 +180,9 @@ class LibraryStore(private val blob: BlobStore) : Library {
         val remoteLikes = data["likes"].arr().orEmpty().mapNotNull { it.obj() }
         val remoteRecent = data["recent"].arr().orEmpty().mapNotNull { it.obj() }
         val extra = JsonObject(data.filterKeys { it != "likes" && it != "recent" })
-        commit(LibraryData(mergeById(cur.likes, remoteLikes), mergeById(cur.recent, remoteRecent).take(RECENT_MAX), extra))
+        val merged = mergePlaylists(rawPlaylists(cur), data["playlists"].arr().orEmpty().mapNotNull { it.obj() })
+        val next = LibraryData(mergeById(cur.likes, remoteLikes), mergeById(cur.recent, remoteRecent).take(RECENT_MAX), extra)
+        commit(if (merged.isEmpty()) next else withPlaylists(next, merged))
     }
 
     /** Что записать в `data` строки `library`: наши лайки и история поверх остального, что прислал сервер. */
@@ -120,6 +193,18 @@ class LibraryStore(private val blob: BlobStore) : Library {
 
     companion object {
         const val RECENT_MAX = 60
+
+        /** Как `mergePlaylists` сайта: свои поля побеждают, треки без повторов, новые первыми. */
+        fun mergePlaylists(local: List<JsonObject>, remote: List<JsonObject>): List<JsonObject> {
+            val map = LinkedHashMap<String, JsonObject>()
+            for (r in remote) r.str("id")?.let { map[it] = r }
+            for (p in local) {
+                val id = p.str("id") ?: continue
+                val r = map[id]
+                map[id] = if (r == null) p else JsonObject(r + p + ("tracks" to JsonArray(mergeById(p["tracks"].arr().orEmpty().mapNotNull { it.obj() }, r["tracks"].arr().orEmpty().mapNotNull { it.obj() }))))
+            }
+            return map.values.sortedByDescending { it.long("created") ?: 0L }
+        }
 
         fun mergeById(a: List<JsonObject>, b: List<JsonObject>): List<JsonObject> {
             val seen = HashSet<String>()

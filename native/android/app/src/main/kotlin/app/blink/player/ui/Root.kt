@@ -74,6 +74,7 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Overlay.Room -> RoomScreen(g)
             Overlay.Friends -> FriendsScreen(g)
             Overlay.Plus -> PlusScreen(g)
+            Overlay.Library -> LibraryScreen(g)
             Overlay.None -> Unit
         }
 
@@ -92,6 +93,8 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         ) {
             PlayerScreen(g, player, offline) { g.nav.openPlayer(false) }
         }
+
+        PlaylistPicker(g)
 
         ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 150 else 90)
     }

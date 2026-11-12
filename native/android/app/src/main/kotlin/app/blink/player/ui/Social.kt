@@ -50,7 +50,7 @@ import kotlinx.coroutines.launch
 
 /** Общая рамка экрана поверх вкладок: заголовок, «назад», прокрутка. */
 @Composable
-private fun Sheet(g: Graph, title: String, content: @Composable () -> Unit) {
+internal fun Sheet(g: Graph, title: String, content: @Composable () -> Unit) {
     BackHandler { g.nav.close() }
     Column(
         Modifier
@@ -71,7 +71,7 @@ private fun Sheet(g: Graph, title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
@@ -83,7 +83,7 @@ private fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit
 }
 
 @Composable
-private fun Chip(text: String, active: Boolean = false, onClick: (() -> Unit)? = null) {
+internal fun Chip(text: String, active: Boolean = false, onClick: (() -> Unit)? = null) {
     Box(
         Modifier
             .clip(CircleShape)

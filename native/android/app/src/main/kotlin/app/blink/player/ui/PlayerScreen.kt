@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import app.blink.core.ui.Format
 import app.blink.player.Graph
 import app.blink.player.Overlay
 import app.blink.player.playback.PlayerUi
+import kotlinx.coroutines.launch
 
 /** Большой плеер: обложка, перемотка, управление и кнопка сохранения. Закрывается свайпом вниз кнопкой или «Назад». */
 @Composable
@@ -52,7 +54,7 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
     BackHandler(onBack = onClose)
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Ink.ink).pointerInput(Unit) { detectTapGestures { } }) {
-        val side = minOf(maxWidth - 48.dp, maxHeight - 400.dp).coerceAtLeast(150.dp)
+        val side = minOf(maxWidth - 48.dp, maxHeight - 450.dp).coerceAtLeast(150.dp)
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -112,6 +114,13 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 PillButton(if (g.room.inRoom) "Комната" else "Слушать вместе", { g.nav.open(Overlay.Room) }, primary = false)
+            }
+            Spacer(Modifier.height(8.dp))
+            val scope = rememberCoroutineScope()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                PillButton("В плейлист", { g.pickTrack.value = track }, primary = false)
+                Spacer(Modifier.width(10.dp))
+                PillButton("Поделиться", { scope.launch { g.actions.share(g.shared.trackLink(track)) } }, primary = false)
             }
             Spacer(Modifier.height(12.dp))
             SaveChip(SaveUi.of(track, offline), OfflinePolicy.keyOf(track) in offline.savedKeys) { onSaveTap(g, track, offline) }

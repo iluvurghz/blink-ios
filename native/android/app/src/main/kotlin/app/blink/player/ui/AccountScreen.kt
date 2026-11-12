@@ -110,6 +110,15 @@ fun AccountScreen(g: Graph) {
 
         Spacer(Modifier.height(14.dp))
         Card {
+            T("Музыка", style = Type.h2)
+            Spacer(Modifier.height(6.dp))
+            T("Любимое, ваши плейлисты и подборки Blink. Всё это синхронизируется с сайтом.", style = Type.body, color = Ink.mute)
+            Spacer(Modifier.height(14.dp))
+            PillButton("Открыть", { g.nav.openLibrary() })
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Card {
             T("Вместе", style = Type.h2)
             Spacer(Modifier.height(6.dp))
             T("Комната, где музыка одна на всех, и друзья, которые видят, что вы слушаете.", style = Type.body, color = Ink.mute)

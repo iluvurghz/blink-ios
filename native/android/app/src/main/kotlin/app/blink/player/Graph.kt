@@ -26,6 +26,10 @@ import app.blink.core.social.RoomSession
 import app.blink.player.playback.RoomPort
 import kotlinx.coroutines.delay
 import app.blink.core.wave.LibraryStore
+import app.blink.core.library.DeepLink
+import app.blink.core.library.SharedApi
+import app.blink.core.library.SharedTrack
+import app.blink.core.model.Track
 import app.blink.core.wave.LibrarySync
 import app.blink.core.wave.WaveApi
 import app.blink.core.wave.WaveEngine
@@ -92,6 +96,9 @@ class Graph(val app: Application) {
     val room = RoomSession(RoomApi(http, config, auth), scope, RoomPort(player), { auth.session.value?.userId }, { toasts.show(it) })
     val friends = FriendsModel(FriendsApi(http, config, auth), scope) { toasts.show(it) }
     val plusApi = PlusApi(http, config, auth, PrefsKeyValue(prefs))
+    val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
+    /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
+    val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)
     private val presence = PresenceBeat(http, config, PrefsKeyValue(prefs), scope)
 
     // Вспышка и лайки: состояние на устройстве, лайки и история синхронизируются с аккаунтом.
@@ -102,6 +109,25 @@ class Graph(val app: Application) {
     )
     private val waveEngine = WaveEngine(WaveApi(http, config), WaveStore(PrefsBlob(prefs, "wave")), library, { waveSettings.value })
     val flash = FlashController(this, waveEngine, library, waveSettings)
+
+    /** Открыли ссылку на трек (`/t/<код>`, `/t/<id>`): узнаём, что это, и включаем. */
+    suspend fun openSharedTrack(link: DeepLink.Track) {
+        val ref = link.ref
+        val track: Track? = try {
+            when {
+                SharedApi.SHORT.matches(ref) -> shared.resolveTrack(ref)?.toTrack()
+                ref.matches(Regex("^\\d{1,15}$")) -> api.lookup(ref)
+                link.title.isNotEmpty() -> SharedTrack(ref, link.title, link.artist, "").toTrack()
+                ref.startsWith("b:") -> api.search(ref.removePrefix("b:")).firstOrNull()
+                else -> null
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        if (track == null) toasts.show("Не получилось открыть трек по ссылке") else actions.play(listOf(track), 0)
+    }
 
     /** Вернулись из браузера по blink://auth: заканчиваем вход Google или Telegram. */
     fun finishSignIn(url: String?) {
