@@ -76,12 +76,13 @@ fun FlashScreen(g: Graph) {
     val artists = remember(liked) { favouriteArtists(liked) }
     val track = player.track
 
-    Box(Modifier.fillMaxSize()) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+    val screenH = maxHeight
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 190.dp),
     ) {
-        item(key = "hero") { FlashHero(g, Modifier.fillParentMaxHeight()) }
+        item(key = "hero") { FlashHero(g, Modifier.height(screenH)) }
         item(key = "collection") {
             Spacer(Modifier.height(26.dp))
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {

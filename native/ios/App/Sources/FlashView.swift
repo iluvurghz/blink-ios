@@ -10,6 +10,8 @@ struct FlashView: View {
     @EnvironmentObject private var version: LibraryVersion
 
     let bottomInset: CGFloat
+    /// Вкладка видна и большой плеер закрыт: только тогда живёт свет за Вспышкой.
+    var active: Bool = true
 
     var body: some View {
         _ = version.value
@@ -22,7 +24,7 @@ struct FlashView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                FlashHero(top: geo.safeAreaInsets.top, bottom: Chrome.dock + Chrome.gap * 2 + 18 + geo.safeAreaInsets.bottom)
+                FlashHero(active: active, top: geo.safeAreaInsets.top, bottom: Chrome.dock + Chrome.gap * 2 + 18 + geo.safeAreaInsets.bottom)
                     .frame(height: geo.size.height + geo.safeAreaInsets.top)
                 HStack(alignment: .lastTextBaseline) {
                     T("Коллекция", .h1)
@@ -87,11 +89,6 @@ struct FlashView: View {
         }
         }
         .ignoresSafeArea(edges: .top)
-        // под часами и значками строки состояния, когда главная прокручена вниз
-        LinearGradient(colors: [Color(hex: 0x0B0A0D), Color(hex: 0x0B0A0D).opacity(0.85), Color(hex: 0x0B0A0D).opacity(0)], startPoint: .top, endPoint: .bottom)
-            .frame(height: geo.safeAreaInsets.top + 12)
-            .offset(y: -geo.safeAreaInsets.top)
-            .allowsHitTesting(false)
         }
         }
     }
@@ -132,13 +129,14 @@ private extension Hsl {
 struct FlashAura: View {
     let palette: Palette
     let energy: Double
+    var paused: Bool = false
 
     var body: some View {
         let c0 = palette.accent.vivid(0.58).color
         let c1 = palette.glowB.vivid(0.5).color
         let c2 = palette.glowA.vivid(0.52).color
         let c3 = palette.accent.vivid(0.66, 0.9).color
-        return TimelineView(.animation(minimumInterval: 1.0 / 30)) { ctx in
+        return TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000)
             Canvas { g, size in
                 let w = size.width
@@ -190,6 +188,7 @@ private struct FlashHero: View {
     @EnvironmentObject private var flash: FlashController
     @EnvironmentObject private var player: PlayerStore
     @EnvironmentObject private var stage: StageModel
+    let active: Bool
     let top: CGFloat
     let bottom: CGFloat
     @State private var dx: CGFloat = 0
@@ -202,7 +201,7 @@ private struct FlashHero: View {
         let flashing = flash.active && ui.track != nil
         return ZStack {
             Color(hex: 0x0B0A0D)
-            FlashAura(palette: p, energy: ui.playing ? 1 : 0.35)
+            FlashAura(palette: p, energy: ui.playing ? 1 : 0.35, paused: !active)
             VStack(spacing: 0) {
                 header(flashing: flashing, accent: accent, ink: ink)
                     .frame(height: 48)

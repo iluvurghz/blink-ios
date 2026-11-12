@@ -30,8 +30,18 @@ struct RootView: View {
 
         ZStack(alignment: .bottom) {
             Ink.ink.ignoresSafeArea()
-            FlashView(bottomInset: Chrome.height(hasTrack: false) + 12)
+            FlashView(bottomInset: Chrome.height(hasTrack: false) + 12, active: tab == .flash && !playerOpen)
                 .screen(tab == .flash)
+            if tab == .flash {
+                // под часами и значками строки состояния, когда главная прокручена вниз
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [Color(hex: 0x0B0A0D), Color(hex: 0x0B0A0D).opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 14)
+                        .ignoresSafeArea(edges: .top)
+                    Spacer(minLength: 0)
+                }
+                .allowsHitTesting(false)
+            }
             SearchView(active: tab == .search, bottomInset: chrome + 12)
                 .screen(tab == .search)
             DownloadsView(bottomInset: chrome + 12)
