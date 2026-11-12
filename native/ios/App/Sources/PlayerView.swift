@@ -20,7 +20,7 @@ struct PlayerView: View {
         let ui = player.value
         GeometryReader { geo in
             if let track = ui.track {
-                let side = max(150, min(geo.size.width - 48, geo.size.height - 400))
+                let side = max(150, min(geo.size.width - 48, geo.size.height - 450))
                 VStack(spacing: 0) {
                     header(track)
                     Spacer(minLength: 0)
@@ -44,7 +44,12 @@ struct PlayerView: View {
                         .padding(.top, 14)
                     Spacer(minLength: 0)
                     PillButton(graph.room.inRoom ? "Комната" : "Слушать вместе", primary: false) { graph.nav.open(.room) }
-                        .padding(.bottom, 12)
+                        .padding(.bottom, 8)
+                    HStack(spacing: 10) {
+                        PillButton("В плейлист", primary: false) { graph.pick.track = track }
+                        PillButton("Поделиться", primary: false) { shareTrack(track) }
+                    }
+                    .padding(.bottom, 12)
                     SaveChip(
                         ui: SaveUi.of(track, offline.value),
                         onPhone: OfflinePolicy.keyOf(track).map { offline.value.savedKeys.contains($0) } ?? false
@@ -58,6 +63,13 @@ struct PlayerView: View {
         .background(Ink.ink.ignoresSafeArea())
         .offset(y: drag)
         .accessibilityAddTraits(.isModal)
+    }
+
+    private func shareTrack(_ track: Track) {
+        Task { @MainActor in
+            let link = await graph.shared.trackLink(track)
+            graph.presentShare(link)
+        }
     }
 
     private func header(_ track: Track) -> some View {

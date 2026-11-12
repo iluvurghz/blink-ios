@@ -167,6 +167,12 @@ public final class BlinkApi: Sendable {
         )
     }
 
+    /// Трек Apple по числовому id (из ссылки `/t/<id>`); nil, если не нашли.
+    public func lookup(_ id: String) async throws -> Track? {
+        guard let url = URLBuilder.make(config.base, path: "api/itunes/lookup", query: [("id", id), ("country", "ru"), ("entity", "song")]) else { return nil }
+        return try await songs(url).first
+    }
+
     private func itunes(_ q: String, _ country: String) async throws -> [Track] {
         guard let url = URLBuilder.make(config.base, path: "api/itunes/search", query: [
             ("term", q), ("country", country), ("media", "music"), ("entity", "song"), ("limit", "50"),

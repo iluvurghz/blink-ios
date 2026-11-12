@@ -19,25 +19,29 @@ struct OverlayHost: View {
             Sheet(title: "Друзья") { FriendsContent(bottomInset: bottomInset) }
         case .plus:
             PlusSheet(bottomInset: bottomInset)
+        case .library:
+            LibraryOverlay(bottomInset: bottomInset)
         }
     }
 }
 
 /// Шапка с кнопкой «Назад» и прокручиваемое тело.
-private struct Sheet<Content: View>: View {
+struct Sheet<Content: View>: View {
     @EnvironmentObject private var graph: Graph
     let title: String
+    let onBack: (() -> Void)?
     let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
+    init(title: String, onBack: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.onBack = onBack
         self.content = content()
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                IconButton(.expandMore, "Закрыть") { graph.nav.close() }
+                IconButton(.expandMore, onBack == nil ? "Закрыть" : "Назад") { if let back = onBack { back() } else { graph.nav.close() } }
                     .rotationEffect(.degrees(90))
                 T(title, .h2, lines: 1)
                     .accessibilityAddTraits(.isHeader)
@@ -53,7 +57,7 @@ private struct Sheet<Content: View>: View {
     }
 }
 
-private struct Panel<Content: View>: View {
+struct Panel<Content: View>: View {
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -69,7 +73,7 @@ private struct Panel<Content: View>: View {
     }
 }
 
-private struct Chip: View {
+struct Chip: View {
     let text: String
     let selected: Bool
     let action: () -> Void

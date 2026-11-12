@@ -46,6 +46,8 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(1)
             }
+            PlaylistPicker()
+                .zIndex(2)
         }
         .overlay(alignment: .bottom) {
             ToastHost(bottomPadding: playerOpen ? 96 : chrome + 12)

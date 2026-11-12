@@ -29,6 +29,8 @@ struct BlinkApp: App {
                 .environmentObject(graph.flash)
                 .environmentObject(graph.roomStore)
                 .environmentObject(graph.friendsStore)
+                .environmentObject(graph.libraryVersion)
+                .environmentObject(graph.pick)
                 .onOpenURL { graph.handleLink($0.absoluteString) }
                 .preferredColorScheme(.dark)
                 .tint(Ink.accent)

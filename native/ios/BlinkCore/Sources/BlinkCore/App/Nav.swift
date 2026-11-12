@@ -14,14 +14,26 @@ public enum AppOverlay: Equatable, Sendable {
     case room
     case friends
     case plus
+    case library
+}
+
+/// Что открыто внутри экрана «Музыка»: список плейлистов, любимое, плейлист, чужой плейлист по ссылке, подборка редакции.
+public enum LibRoute: Equatable, Sendable {
+    case home
+    case likes
+    case mine(String)
+    case shared(String)
+    case editorial(String)
 }
 
 public struct NavState: Equatable, Sendable {
     public var tab: AppTab
     public var playerOpen: Bool
     public var overlay: AppOverlay
+    public var libRoute: LibRoute
 
-    public init(tab: AppTab = .flash, playerOpen: Bool = false, overlay: AppOverlay = .none) {
+    public init(tab: AppTab = .flash, playerOpen: Bool = false, overlay: AppOverlay = .none, libRoute: LibRoute = .home) {
+        self.libRoute = libRoute
         self.tab = tab
         self.playerOpen = playerOpen
         self.overlay = overlay
@@ -55,6 +67,18 @@ public final class Nav: @unchecked Sendable {
             $0.overlay = overlay
             $0.playerOpen = false
         }
+    }
+
+    public func openLibrary(_ route: LibRoute = .home) {
+        state.update {
+            $0.libRoute = route
+            $0.overlay = .library
+            $0.playerOpen = false
+        }
+    }
+
+    public func libraryTo(_ route: LibRoute) {
+        state.update { $0.libRoute = route }
     }
 
     public func close() {

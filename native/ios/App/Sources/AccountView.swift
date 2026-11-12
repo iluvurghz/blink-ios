@@ -25,6 +25,8 @@ struct AccountView: View {
                 } else {
                     SignInCard(active: active)
                 }
+                MusicCard()
+                    .padding(.top, 14)
                 TogetherCard()
                     .padding(.top, 14)
                 OfflineCard(state: offline.value)
@@ -122,6 +124,20 @@ private struct OfflineCard: View {
             T("Сохранять можно треки каталога Blink (с меткой BLINK), если артист разрешил. Остальные играют только онлайн.", .small, color: Ink.faint)
                 .padding(.top, 6)
             PillButton("Открыть «Скачанное»", primary: false) { graph.nav.go(.downloads) }
+                .padding(.top, 14)
+        }
+    }
+}
+
+private struct MusicCard: View {
+    @EnvironmentObject private var graph: Graph
+
+    var body: some View {
+        Card {
+            T("Музыка", .h2)
+            T("Любимое, ваши плейлисты и подборки Blink. Всё это синхронизируется с сайтом.", .body, color: Ink.mute)
+                .padding(.top, 6)
+            PillButton("Открыть") { graph.nav.openLibrary() }
                 .padding(.top, 14)
         }
     }

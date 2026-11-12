@@ -27,6 +27,8 @@ class Store<Value: Equatable & Sendable>: ObservableObject {
 final class NavStore: Store<NavState> {}
 final class RoomStore: Store<RoomState?> {}
 final class FriendsStore: Store<FriendsUi> {}
+/// Версия библиотеки (лайки, плейлисты): меняется при любой правке, экраны перечитывают данные.
+final class LibraryVersion: Store<Int> {}
 final class PlayerStore: Store<PlayerUi> {}
 final class OfflineStore: Store<OfflineState> {}
 final class SearchStore: Store<SearchState> {}
@@ -85,4 +87,9 @@ final class ToastCenter: ObservableObject {
             withAnimation(.easeIn(duration: 0.16)) { shown = nil }
         }
     }
+}
+
+/// Трек, для которого сейчас выбирают плейлист (окно «В плейлист»).
+final class PickState: ObservableObject {
+    @Published var track: Track?
 }

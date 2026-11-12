@@ -51,7 +51,10 @@ final class Graph: ObservableObject {
     private let presence: PresenceBeat
     let roomStore: RoomStore
     let friendsStore: FriendsStore
-    private let library: LibraryStore
+    let library: LibraryStore
+    let shared: SharedApi
+    let libraryVersion: LibraryVersion
+    let pick = PickState()
     private let librarySync: LibrarySync
     private let webAuth = WebAuth()
     private let nowPlaying: NowPlayingBridge
@@ -146,6 +149,8 @@ final class Graph: ObservableObject {
             settings: { settings.value }
         )
         self.library = library
+        self.shared = SharedApi(http: http, config: config, tokens: auth, userId: { auth.session?.userId }, userName: { auth.session?.name ?? auth.session?.email })
+        self.libraryVersion = LibraryVersion(0) { library.observe($0) }
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })
         self.flash = FlashController(
             engine: waveEngine,
@@ -320,6 +325,47 @@ final class Graph: ObservableObject {
             nav.open(.friends)
             let friends = self.friends
             Task { await friends.accept(code) }
+            return
+        }
+        switch DeepLink.parse(url) {
+        case .playlist(let code)?:
+            nav.openLibrary(.shared(code))
+        case .track(let ref, let title, let artist)?:
+            Task { @MainActor in await self.openSharedTrack(ref: ref, title: title, artist: artist) }
+        case .artist(let who)?:
+            if let u = URL(string: "https://blinkmusic.cc/u/" + who) { actions.openURL(u) }
+        default:
+            break
+        }
+    }
+
+    /// Системное меню «Поделиться» со ссылкой.
+    @MainActor
+    func presentShare(_ text: String) {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard var top = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow })?.rootViewController else { return }
+        while let next = top.presentedViewController { top = next }
+        let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = top.view
+        top.present(sheet, animated: true)
+    }
+
+    /// Открыли ссылку на трек (`/t/<код>`, `/t/<id>`): узнаём, что это, и включаем.
+    func openSharedTrack(ref: String, title: String, artist: String) async {
+        var track: Track?
+        if SharedApi.isShortCode(ref) {
+            track = await shared.resolveTrack(ref)?.toTrack()
+        } else if ref.allSatisfy({ $0 >= "0" && $0 <= "9" }) {
+            track = try? await api.lookup(ref)
+        } else if !title.isEmpty {
+            track = SharedTrack(id: ref, title: title, artist: artist, artwork: "").toTrack()
+        } else if ref.hasPrefix("b:") {
+            track = (try? await api.search(String(ref.dropFirst(2))))?.first
+        }
+        if let t = track {
+            actions.play([t], at: 0)
+        } else {
+            toasts.show("Не получилось открыть трек по ссылке")
         }
     }
 
