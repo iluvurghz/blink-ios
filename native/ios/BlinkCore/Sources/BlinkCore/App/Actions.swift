@@ -211,12 +211,13 @@ public final class Actions: @unchecked Sendable {
         }
     }
 
-    /// Оформление подписки пока на сайте: в M1 появится встроенный экран.
+    /// Страница Blink+ в приложении: тарифы, промокод, поддержка.
     public func openPlus() {
-        if let url = URL(string: config.base) {
-            platform.open(url)
-        } else {
-            toasts.show("Откройте blinkmusic.cc в браузере: раздел Blink+")
-        }
+        nav.open(.plus)
+    }
+
+    /// Открыть ссылку (оплата, сайт) в браузере.
+    public func openURL(_ url: URL) {
+        platform.open(url)
     }
 }

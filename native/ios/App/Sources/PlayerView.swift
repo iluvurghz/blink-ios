@@ -29,7 +29,10 @@ struct PlayerView: View {
                     titleBlock(track)
                         .padding(.top, 26)
                         .gesture(closeDrag)
-                    SeekBar(positionMs: ui.positionMs, durationMs: ui.durationMs) { graph.player.seek(toMs: $0) }
+                    SeekBar(positionMs: ui.positionMs, durationMs: ui.durationMs) {
+                        graph.player.seek(toMs: $0)
+                        graph.room.onUserSeek($0)
+                    }
                         .padding(.top, 18)
                     HStack {
                         T(Format.duration(Int(ui.positionMs / 1000)), .small, color: Ink.faint)
@@ -40,6 +43,8 @@ struct PlayerView: View {
                     controls(ui)
                         .padding(.top, 14)
                     Spacer(minLength: 0)
+                    PillButton(graph.room.inRoom ? "Комната" : "Слушать вместе", primary: false) { graph.nav.open(.room) }
+                        .padding(.bottom, 12)
                     SaveChip(
                         ui: SaveUi.of(track, offline.value),
                         onPhone: OfflinePolicy.keyOf(track).map { offline.value.savedKeys.contains($0) } ?? false

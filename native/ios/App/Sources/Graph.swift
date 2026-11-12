@@ -45,6 +45,12 @@ final class Graph: ObservableObject {
     let player: PlayerController
     let actions: Actions
     let flash: FlashController
+    let room: RoomSession
+    let friends: FriendsModel
+    let plusApi: PlusApi
+    private let presence: PresenceBeat
+    let roomStore: RoomStore
+    let friendsStore: FriendsStore
     private let library: LibraryStore
     private let librarySync: LibrarySync
     private let webAuth = WebAuth()
@@ -69,6 +75,8 @@ final class Graph: ObservableObject {
     private var tokens: [NetworkObservation] = []
     private var pushWork: DispatchWorkItem?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var lastLocal: LocalPlayback?
+    private var timer: Timer?
 
     init() {
         // Ключ входа публичный, но в репозиторий не кладётся: он приходит при сборке (BLINK_SUPABASE_ANON_KEY).
@@ -150,6 +158,27 @@ final class Graph: ObservableObject {
             settings: settings
         )
 
+        // Социальное: комната «Слушать вместе», друзья, страница Blink+.
+        let streamer = URLSessionEventStreamer(userAgent: agent)
+        let roomService = RoomApi(http: http, config: config, tokens: auth, streamer: streamer)
+        let room = RoomSession(
+            service: roomService,
+            port: PlayerRoomPort(player: player),
+            userId: { auth.session?.userId },
+            say: { toasts.show($0) },
+            onChat: { chat in
+                // Сообщения других, пока окно комнаты закрыто, показываем всплывашкой.
+                if nav.current.overlay != .room { toasts.show(chat.name + ": " + chat.text) }
+            }
+        )
+        let friends = FriendsModel(service: FriendsApi(http: http, config: config, tokens: auth), say: { toasts.show($0) })
+        self.room = room
+        self.friends = friends
+        self.plusApi = PlusApi(http: http, config: config, tokens: auth, cache: DefaultsKeyValue())
+        self.presence = PresenceBeat(http: http, config: config, store: DefaultsKeyValue())
+        self.roomStore = RoomStore(room.room) { room.observe($0) }
+        self.friendsStore = FriendsStore(friends.current) { friends.observe($0) }
+
         self.config = config
         self.auth = auth
         self.api = api
@@ -213,6 +242,15 @@ final class Graph: ObservableObject {
             let current = search.current
             if online && current.newest.isEmpty && current.chart.isEmpty { search.refreshHome() }
         })
+        // Плеер сменил трек или состояние: сообщаем комнате (если это не мы его подогнали) и друзьям.
+        tokens.append(player.observe { [weak self] ui in self?.playerChanged(ui) })
+        tokens.append(room.observe { [weak self] r in self?.roomChanged(r?.code) })
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Раз в 45 секунд: «я здесь» для счётчика онлайна и повтор «слушаю» (сервер забывает через 90).
+            self.timer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in self?.heartbeat() }
+            self.heartbeat()
+        }
         flash.attach()
         tokens.append(library.observe { [weak self] _ in self?.libraryChanged() })
         search.refreshHome()
@@ -228,13 +266,60 @@ final class Graph: ObservableObject {
         if same { return }
         if userId == nil {
             plus.clear()
+            room.leave()
+            friends.clear()
         } else {
+            let friends = self.friends
+            Task { await friends.refresh() }
             let plus = self.plus
             let sync = librarySync
             Task {
                 _ = await plus.refresh()
                 _ = await sync.pull()
             }
+        }
+    }
+
+    private func playerChanged(_ ui: PlayerUi) {
+        let snap = LocalPlayback(track: ui.track, playing: ui.playing, positionMs: ui.positionMs, loading: ui.buffering)
+        lock.lock()
+        let prev = lastLocal
+        let same = prev?.trackId == snap.trackId && prev?.playing == snap.playing && prev?.loading == snap.loading
+        if !same { lastLocal = snap }
+        lock.unlock()
+        if same { return }
+        room.onLocal(snap)
+        if auth.session != nil { friends.report(playing: snap.playing, track: snap.track, room: room.room?.code) }
+    }
+
+    private func roomChanged(_ code: String?) {
+        let ui = player.current
+        if auth.session != nil { friends.report(playing: ui.playing, track: ui.track, room: code) }
+    }
+
+    private func heartbeat() {
+        let ui = player.current
+        presence.beat(playing: ui.playing, track: ui.track)
+        if ui.playing && auth.session != nil { friends.report(playing: true, track: ui.track, room: room.room?.code, force: true) }
+    }
+
+    /// Ссылки: приглашение в комнату или к другу (открыли по blink:// или вставили).
+    func handleLink(_ url: String) {
+        if url.hasPrefix("blink://auth") { finishSignIn(url); return }
+        if let code = RoomSession.codeFrom(url) {
+            if auth.session == nil {
+                toasts.show("Войдите, чтобы слушать вместе")
+                nav.go(.account)
+            } else {
+                room.join(code)
+                nav.open(.room)
+            }
+            return
+        }
+        if let code = FriendsApi.codeFrom(url) {
+            nav.open(.friends)
+            let friends = self.friends
+            Task { await friends.accept(code) }
         }
     }
 

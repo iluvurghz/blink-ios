@@ -25,6 +25,8 @@ class Store<Value: Equatable & Sendable>: ObservableObject {
 }
 
 final class NavStore: Store<NavState> {}
+final class RoomStore: Store<RoomState?> {}
+final class FriendsStore: Store<FriendsUi> {}
 final class PlayerStore: Store<PlayerUi> {}
 final class OfflineStore: Store<OfflineState> {}
 final class SearchStore: Store<SearchState> {}

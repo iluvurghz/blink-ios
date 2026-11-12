@@ -38,6 +38,8 @@ struct RootView: View {
                 .screen(tab == .downloads)
             AccountView(active: tab == .account, bottomInset: chrome + 16)
                 .screen(tab == .account)
+            OverlayHost(overlay: nav.value.overlay, bottomInset: chrome + 16)
+                .zIndex(0.5)
             ChromeView(withTrack: withTrack)
             if playerOpen {
                 PlayerView(onClose: { graph.nav.openPlayer(false) })

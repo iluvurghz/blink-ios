@@ -152,7 +152,7 @@ final class ActionsTests: XCTestCase {
         XCTAssertEqual(t?.action, "Открыть Blink+")
         XCTAssertTrue(r.offline.state.jobs.isEmpty)
         t?.onAction?()
-        XCTAssertEqual(r.platform.opened.items, [backend.base])
+        XCTAssertEqual(r.nav.current.overlay, .plus)
     }
 
     func testPlusBoughtOnTheSiteIsPickedUpBeforeRefusing() async throws {
@@ -309,9 +309,11 @@ final class ActionsTests: XCTestCase {
         XCTAssertEqual(r.player.plays.items, ["b:a|0"])
     }
 
-    func testOpeningBlinkPlusOpensTheSite() async throws {
+    func testOpeningBlinkPlusShowsTheBlinkPlusScreen() async throws {
         let r = await rig()
         r.actions.openPlus()
-        XCTAssertEqual(r.platform.opened.items, [backend.base])
+        XCTAssertEqual(r.nav.current.overlay, .plus)
+        r.nav.go(.search)
+        XCTAssertEqual(r.nav.current.overlay, .none)
     }
 }

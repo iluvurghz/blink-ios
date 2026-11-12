@@ -25,6 +25,8 @@ struct AccountView: View {
                 } else {
                     SignInCard(active: active)
                 }
+                TogetherCard()
+                    .padding(.top, 14)
                 OfflineCard(state: offline.value)
                     .padding(.top, 14)
                 T("Blink " + Graph.versionText, .small, color: Ink.faint)
@@ -121,6 +123,23 @@ private struct OfflineCard: View {
                 .padding(.top, 6)
             PillButton("Открыть «Скачанное»", primary: false) { graph.nav.go(.downloads) }
                 .padding(.top, 14)
+        }
+    }
+}
+
+private struct TogetherCard: View {
+    @EnvironmentObject private var graph: Graph
+
+    var body: some View {
+        Card {
+            T("Вместе", .h2)
+            T("Комната, где музыка одна на всех, и друзья, которые видят, что вы слушаете.", .body, color: Ink.mute)
+                .padding(.top, 6)
+            HStack(spacing: 10) {
+                PillButton("Слушать вместе") { graph.nav.open(.room) }
+                PillButton("Друзья", primary: false) { graph.nav.open(.friends) }
+            }
+            .padding(.top, 14)
         }
     }
 }
