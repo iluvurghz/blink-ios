@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class Tab { Flash, Search, Downloads, Account }
 
 /** Экраны поверх вкладок: комната, друзья, Blink+. */
-enum class Overlay { None, Room, Friends, Plus, Library }
+enum class Overlay { None, Room, Friends, Plus, Library, Artist }
 
 /** Что открыто внутри экрана «Музыка»: список плейлистов, любимое, плейлист, чужой плейлист по ссылке, подборка редакции. */
 sealed interface LibRoute {
@@ -44,6 +44,15 @@ class Nav {
     fun openLibrary(route: LibRoute = LibRoute.Home) {
         libFlow.value = route
         open(Overlay.Library)
+    }
+
+    private val artistFlow = MutableStateFlow("")
+    val artistKey: StateFlow<String> = artistFlow.asStateFlow()
+
+    /** Страница артиста Blink по id или имени ссылки (`blinkmusic.cc/u/<имя>`). */
+    fun openArtist(key: String) {
+        artistFlow.value = key
+        open(Overlay.Artist)
     }
 
     fun libraryTo(route: LibRoute) {

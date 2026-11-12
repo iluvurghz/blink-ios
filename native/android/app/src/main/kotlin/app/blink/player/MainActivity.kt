@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
         when (val link = DeepLink.parse(url)) {
             is DeepLink.Playlist -> graph.nav.openLibrary(LibRoute.Shared(link.code))
             is DeepLink.Track -> graph.scope.launch { graph.openSharedTrack(link) }
-            is DeepLink.Artist -> graph.actions.openUrl("https://blinkmusic.cc/u/" + link.who)
+            is DeepLink.Artist -> graph.nav.openArtist(link.who)
             else -> Unit
         }
     }

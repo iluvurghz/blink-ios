@@ -75,6 +75,7 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Overlay.Friends -> FriendsScreen(g)
             Overlay.Plus -> PlusScreen(g)
             Overlay.Library -> LibraryScreen(g)
+            Overlay.Artist -> ArtistScreen(g)
             Overlay.None -> Unit
         }
 

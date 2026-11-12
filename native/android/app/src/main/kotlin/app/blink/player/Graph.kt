@@ -96,6 +96,7 @@ class Graph(val app: Application) {
     val room = RoomSession(RoomApi(http, config, auth), scope, RoomPort(player), { auth.session.value?.userId }, { toasts.show(it) })
     val friends = FriendsModel(FriendsApi(http, config, auth), scope) { toasts.show(it) }
     val plusApi = PlusApi(http, config, auth, PrefsKeyValue(prefs))
+    val artists = app.blink.core.library.ArtistApi(http, config, auth, api, { auth.session.value?.userId })
     val shared = SharedApi(http, config, auth, { auth.session.value?.userId }, { auth.session.value?.name ?: auth.session.value?.email })
     /** Трек, для которого сейчас выбирают плейлист (окно «В плейлист»). */
     val pickTrack = kotlinx.coroutines.flow.MutableStateFlow<Track?>(null)

@@ -140,3 +140,46 @@ class PlaylistsTest {
         }
     }
 }
+
+class ArtistApiTest {
+    @Test
+    fun profileFollowAndMissing() = runBlocking {
+        val server = MockWebServer()
+        val seen = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                seen.add(request)
+                val p = request.path.orEmpty()
+                return when {
+                    p.startsWith("/sb/rest/v1/artists") && p.contains("handle=eq.nick") ->
+                        MockResponse().setBody("""[{"id":"a1","user_id":"u9","name":"Ник","handle":"nick","bio":"Привет","avatar_url":"https://x/a.jpg","verified":false}]""")
+                    p.startsWith("/sb/rest/v1/artists") -> MockResponse().setBody("[]")
+                    p.startsWith("/sb/rest/v1/lic_tracks") ->
+                        MockResponse().setBody("""[{"id":"11111111-2222-3333-4444-555555555555","title":"Песня","artist_name":"Ник","duration":180,"cover_path":"c"}]""")
+                    p.startsWith("/sb/rest/v1/rpc/artist_stats") -> MockResponse().setBody("""[{"followers":"12","likes":5}]""")
+                    p.startsWith("/sb/rest/v1/follows") && request.method == "GET" -> MockResponse().setBody("""[{"artist_id":"a1"}]""")
+                    p.startsWith("/sb/rest/v1/follows") -> MockResponse().setResponseCode(201)
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
+        server.start()
+        try {
+            val base = server.url("/").toString().trimEnd('/')
+            val cfg = BlinkConfig(baseUrl = base, supabaseUrl = base, supabaseAnonKey = "anon")
+            val http = OkHttpClient()
+            val api = ArtistApi(http, cfg, null, app.blink.core.net.BlinkApi(http, cfg), { "u1" })
+            val a = api.profile("nick")!!
+            assertEquals("Ник", a.name)
+            assertEquals(12L, a.followers)
+            assertEquals(5L, a.likes)
+            assertEquals(listOf("b:11111111-2222-3333-4444-555555555555"), a.tracks.map { it.id })
+            assertNull(api.profile("ghost"))
+            assertTrue(api.isFollowing("a1"))
+            assertTrue(api.setFollow("a1", true))
+            assertTrue(seen.any { it.method == "POST" && it.path!!.startsWith("/sb/rest/v1/follows") })
+        } finally {
+            server.shutdown()
+        }
+    }
+}

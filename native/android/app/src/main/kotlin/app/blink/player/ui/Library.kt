@@ -277,3 +277,79 @@ private fun addToNew(g: Graph, name: String, t: Track) {
     g.toasts.show("Добавлено в «${p.name}»")
     g.pickTrack.value = null
 }
+
+/** Страница артиста Blink: обложка, подписчики, «Слушать», подписка и треки. Порт ProfilePage сайта (без загрузки треков и постов). */
+@Composable
+fun ArtistScreen(g: Graph) {
+    val key by g.nav.artistKey.collectAsStateWithLifecycle()
+    val session by g.auth.session.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var phase by remember(key) { mutableStateOf<Any?>(Loading) }
+    var following by remember(key) { mutableStateOf(false) }
+    var followers by remember(key) { mutableStateOf(0L) }
+    var attempt by remember(key) { mutableStateOf(0) }
+    LaunchedEffect(key, attempt) {
+        phase = Loading
+        phase = try {
+            g.artists.profile(key)?.also { followers = it.followers } ?: Missing
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Failed
+        }
+    }
+    val profile = phase as? app.blink.core.library.ArtistProfile
+    LaunchedEffect(profile?.id, session?.userId) {
+        following = if (profile != null && session != null && profile.userId != session?.userId) runCatching { g.artists.isFollowing(profile.id) }.getOrDefault(false) else false
+    }
+    Sheet(g, profile?.name ?: "Артист") {
+        when (val p = phase) {
+            Loading -> T("Загружаем…", style = Type.body, color = Ink.mute)
+            Missing -> T("Такой страницы нет.", style = Type.body, color = Ink.mute)
+            Failed -> {
+                T("Не получилось загрузить. Проверьте интернет.", style = Type.body, color = Ink.mute)
+                Spacer(Modifier.height(10.dp))
+                PillButton("Повторить", { attempt++ }, primary = false)
+            }
+            is app.blink.core.library.ArtistProfile -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Cover(p.avatar.orEmpty(), Modifier.size(84.dp), radius = 42.dp)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        T(p.name + if (p.verified) " ✓" else "", style = Type.h1, maxLines = 2)
+                        T(listOf("$followers подп.", Format.tracks(p.tracks.size), if (p.likes > 0) "${p.likes} лайков" else null).filterNotNull().joinToString(" · "), style = Type.small, color = Ink.mute)
+                    }
+                }
+                if (!p.bio.isNullOrBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    T(p.bio!!, style = Type.body, color = Ink.mute)
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PillButton("Слушать", { g.actions.play(p.tracks, 0) }, enabled = p.tracks.isNotEmpty())
+                    if (session?.userId != p.userId) {
+                        PillButton(if (following) "Вы подписаны" else "Подписаться", {
+                            if (session == null) {
+                                g.toasts.show("Войдите, чтобы подписаться")
+                                g.nav.go(app.blink.player.Tab.Account)
+                            } else {
+                                val on = !following
+                                following = on
+                                followers += if (on) 1 else -1
+                                scope.launch {
+                                    if (!g.artists.setFollow(p.id, on)) {
+                                        following = !on
+                                        followers += if (on) -1 else 1
+                                        g.toasts.show("Не получилось, попробуйте ещё раз")
+                                    }
+                                }
+                            }
+                        }, primary = false)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                TrackList(g, p.tracks, emptyText = "Пока нет треков.", onRemove = null)
+            }
+        }
+    }
+}

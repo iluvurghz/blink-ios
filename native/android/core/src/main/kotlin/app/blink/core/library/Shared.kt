@@ -37,14 +37,13 @@ data class SharedTrack(val id: String, val title: String, val artist: String, va
 
 class SharedError(message: String) : Exception(message)
 
-/** Общие плейлисты (таблицы `shared_playlists`, `editorial_playlists`) и короткие ссылки на треки (`/api/share/track`). */
-class SharedApi(http: OkHttpClient, private val config: BlinkConfig, private val tokens: TokenProvider?, private val userId: () -> String?, private val userName: () -> String?) {
+/** Запросы к PostgREST Supabase с зеркалом на сайте (supabase.co режут операторы). Анонимный ключ или токен пользователя. */
+internal class SupabaseRest(http: OkHttpClient, private val config: BlinkConfig, private val tokens: TokenProvider?) {
     private val client = http.withCallTimeout(20)
-    private val jsonType = "application/json".toMediaType()
 
     private fun roots(): List<String> = listOf(config.supabaseMirror, config.supabase).distinct()
 
-    private suspend fun rest(path: String, query: Map<String, String>, build: (Request.Builder) -> Request.Builder = { it }, auth: Boolean = false): Pair<Int, String> {
+    suspend fun call(path: String, query: Map<String, String>, build: (Request.Builder) -> Request.Builder = { it }, auth: Boolean = false): Pair<Int, String> {
         var last: IOException? = null
         for (root in roots()) {
             try {
@@ -60,6 +59,15 @@ class SharedApi(http: OkHttpClient, private val config: BlinkConfig, private val
         }
         throw last ?: IOException("нет адреса")
     }
+}
+
+/** Общие плейлисты (таблицы `shared_playlists`, `editorial_playlists`) и короткие ссылки на треки (`/api/share/track`). */
+class SharedApi(http: OkHttpClient, private val config: BlinkConfig, tokens: TokenProvider?, private val userId: () -> String?, private val userName: () -> String?) {
+    private val client = http.withCallTimeout(20)
+    private val jsonType = "application/json".toMediaType()
+    private val db = SupabaseRest(http, config, tokens)
+
+    private suspend fun rest(path: String, query: Map<String, String>, build: (Request.Builder) -> Request.Builder = { it }, auth: Boolean = false) = db.call(path, query, build, auth)
 
     private fun tracksOf(a: List<kotlinx.serialization.json.JsonElement>?): List<Track> =
         a.orEmpty().mapNotNull { e ->
