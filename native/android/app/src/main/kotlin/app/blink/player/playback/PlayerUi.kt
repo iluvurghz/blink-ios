@@ -16,4 +16,10 @@ data class PlayerUi(
     val queueLeft: Int = 0,
     /** Номер текущего трека в очереди. */
     val index: Int = 0,
+    /** Перемешивание (как кнопка «Перемешать» на сайте). */
+    val shuffle: Boolean = false,
+    /** Повтор: off, all или one. */
+    val repeat: String = "off",
+    /** Номера треков очереди в том порядке, в каком они заиграют дальше (с учётом перемешивания). */
+    val upcoming: List<Int> = emptyList(),
 )

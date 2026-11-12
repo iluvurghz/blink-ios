@@ -11,6 +11,11 @@ public struct PlayerUi: Equatable, Sendable {
     public var hasPrevious: Bool
     /// Сколько треков осталось в очереди после текущего.
     public var queueLeft: Int
+    /// Номер текущего трека в очереди.
+    public var index: Int
+    /// Перемешано ли то, что осталось в очереди.
+    public var shuffle: Bool
+    public var repeatMode: RepeatMode
 
     public init(
         track: Track? = nil,
@@ -20,7 +25,10 @@ public struct PlayerUi: Equatable, Sendable {
         durationMs: Int64 = 0,
         hasNext: Bool = false,
         hasPrevious: Bool = false,
-        queueLeft: Int = 0
+        queueLeft: Int = 0,
+        index: Int = 0,
+        shuffle: Bool = false,
+        repeatMode: RepeatMode = .off
     ) {
         self.track = track
         self.playing = playing
@@ -30,6 +38,22 @@ public struct PlayerUi: Equatable, Sendable {
         self.hasNext = hasNext
         self.hasPrevious = hasPrevious
         self.queueLeft = queueLeft
+        self.index = index
+        self.shuffle = shuffle
+        self.repeatMode = repeatMode
+    }
+}
+
+/// Повтор, как на сайте: выключен, вся очередь, один трек.
+public enum RepeatMode: String, Equatable, Sendable {
+    case off, all, one
+
+    public var next: RepeatMode {
+        switch self {
+        case .off: return .all
+        case .all: return .one
+        case .one: return .off
+        }
     }
 }
 
@@ -81,6 +105,9 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
     private let state = Observable(PlayerUi())
     private var queue: [Track] = []
     private var index = -1
+    /// Очередь до перемешивания: к ней возвращаемся, когда перемешивание выключают.
+    private var unshuffled: [Track]?
+    private var repeatMode: RepeatMode = .off
     private var generation = 0
     private var phase: Phase = .idle
     private var wantPlay = false
@@ -119,6 +146,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         if tracks.isEmpty { return }
         lock.lock()
         queue = tracks
+        unshuffled = nil
         pendingSeekMs = nil
         lock.unlock()
         startTrack(min(max(0, start), tracks.count - 1), autoplay: true)
@@ -129,6 +157,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         if tracks.isEmpty { return }
         lock.lock()
         queue = tracks
+        unshuffled = nil
         pendingSeekMs = positionMs > 0 ? positionMs : nil
         lock.unlock()
         startTrack(min(max(0, start), tracks.count - 1), autoplay: autoplay)
@@ -173,10 +202,12 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         if tracks.isEmpty { return }
         lock.lock()
         queue.append(contentsOf: tracks)
+        unshuffled?.append(contentsOf: tracks)
         let left = index >= 0 ? queue.count - index - 1 : 0
+        let loops = repeatMode == .all
         lock.unlock()
         state.update {
-            $0.hasNext = left > 0
+            $0.hasNext = left > 0 || loops
             $0.queueLeft = left
         }
     }
@@ -236,8 +267,60 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         lock.lock()
         let i = index
         let count = queue.count
+        let loop = repeatMode == .all
         lock.unlock()
-        if i + 1 < count { startTrack(i + 1, autoplay: true) }
+        if i + 1 < count {
+            startTrack(i + 1, autoplay: true)
+        } else if loop && count > 0 {
+            startTrack(0, autoplay: true)
+        }
+    }
+
+    /// Включить трек из очереди по номеру (панель «Очередь»).
+    public func jump(to i: Int) {
+        startTrack(i, autoplay: true)
+    }
+
+    /// Повтор по кругу: выключен → вся очередь → один трек → выключен.
+    public func cycleRepeat() {
+        lock.lock()
+        repeatMode = repeatMode.next
+        let mode = repeatMode
+        let i = index
+        let count = queue.count
+        lock.unlock()
+        state.update {
+            $0.repeatMode = mode
+            $0.hasNext = i + 1 < count || (mode == .all && count > 0)
+        }
+    }
+
+    /// Перемешать то, что осталось после текущего трека, или вернуть прежний порядок.
+    public func toggleShuffle() {
+        lock.lock()
+        var on = false
+        if let original = unshuffled {
+            let current = index >= 0 && index < queue.count ? queue[index] : nil
+            queue = original
+            unshuffled = nil
+            if let c = current, let at = queue.firstIndex(where: { $0.id == c.id }) { index = at }
+        } else if index >= 0 && index < queue.count {
+            unshuffled = queue
+            let head = Array(queue[0...index])
+            queue = head + queue[(index + 1)...].shuffled()
+            on = true
+        }
+        let i = index
+        let count = queue.count
+        let loop = repeatMode == .all
+        lock.unlock()
+        state.update {
+            $0.shuffle = on
+            $0.index = max(0, i)
+            $0.hasNext = i + 1 < count || (loop && count > 0)
+            $0.hasPrevious = i > 0
+            $0.queueLeft = max(0, count - i - 1)
+        }
     }
 
     /// Как в системных плеерах: после трёх секунд «Назад» возвращает в начало, раньше трёх уходит к предыдущему.
@@ -287,10 +370,21 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         let ready = phase == .loaded && !ended
         let i = index
         let count = queue.count
+        let mode = repeatMode
         lock.unlock()
         if !ready { return }
+        if mode == .one {
+            audio.seek(toMs: 0)
+            audio.setPlaying(true)
+            state.update { $0.positionMs = 0 }
+            return
+        }
         if i + 1 < count {
             startTrack(i + 1, autoplay: true)
+            return
+        }
+        if mode == .all && count > 0 {
+            startTrack(0, autoplay: true)
             return
         }
         lock.lock()
@@ -336,7 +430,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         let gen = generation
         index = i
         let track = queue[i]
-        let hasNext = i + 1 < queue.count
+        let hasNext = i + 1 < queue.count || (repeatMode == .all && !queue.isEmpty)
         let hasPrevious = i > 0
         let left = queue.count - i - 1
         phase = .resolving
@@ -355,6 +449,7 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
             $0.hasNext = hasNext
             $0.hasPrevious = hasPrevious
             $0.queueLeft = left
+            $0.index = i
         }
         let task = Task { [weak self] in
             guard let self = self else { return }
