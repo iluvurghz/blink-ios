@@ -11,7 +11,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import app.blink.core.social.FriendsApi
+import app.blink.core.social.RoomSession
 import app.blink.player.ui.BlinkRoot
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val graph: Graph get() = (application as BlinkApp).graph
@@ -37,13 +40,30 @@ class MainActivity : ComponentActivity() {
 
     private fun handleLink(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "blink") graph.finishSignIn(data.toString())
+        val url = data.toString()
+        if (data.scheme == "blink") return graph.finishSignIn(url)
+        RoomSession.codeFrom(url)?.let { code ->
+            if (graph.auth.session.value == null) {
+                graph.toasts.show("Войдите, чтобы слушать вместе")
+                graph.nav.go(Tab.Account)
+            } else {
+                graph.room.join(code)
+                graph.nav.open(Overlay.Room)
+            }
+            return
+        }
+        FriendsApi.codeFrom(url)?.let { code ->
+            graph.nav.open(Overlay.Friends)
+            graph.scope.launch { graph.friends.accept(code) }
+        }
     }
 
     // Пульт к плееру живёт, пока приложение на экране; сама музыка играет в сервисе и без него.
     override fun onStart() {
         super.onStart()
         graph.player.connect()
+        // Вернулись из браузера после оплаты: подписка могла появиться.
+        if (graph.auth.session.value != null) graph.scope.launch { graph.plus.refresh() }
     }
 
     override fun onStop() {

@@ -34,6 +34,7 @@ import app.blink.core.net.AuthLink
 import app.blink.core.ui.Format
 import app.blink.player.BuildConfig
 import app.blink.player.Graph
+import app.blink.player.Overlay
 import app.blink.player.Tab
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -104,6 +105,18 @@ fun AccountScreen(g: Graph) {
                         primary = false,
                     )
                 }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Card {
+            T("Вместе", style = Type.h2)
+            Spacer(Modifier.height(6.dp))
+            T("Комната, где музыка одна на всех, и друзья, которые видят, что вы слушаете.", style = Type.body, color = Ink.mute)
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Слушать вместе", { g.nav.open(Overlay.Room) })
+                PillButton("Друзья", { g.nav.open(Overlay.Friends) }, primary = false)
             }
         }
 

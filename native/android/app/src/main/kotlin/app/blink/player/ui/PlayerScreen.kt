@@ -42,6 +42,7 @@ import app.blink.core.offline.OfflineState
 import app.blink.core.offline.SaveUi
 import app.blink.core.ui.Format
 import app.blink.player.Graph
+import app.blink.player.Overlay
 import app.blink.player.playback.PlayerUi
 
 /** Большой плеер: обложка, перемотка, управление и кнопка сохранения. Закрывается свайпом вниз кнопкой или «Назад». */
@@ -79,7 +80,10 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 }
             }
             Spacer(Modifier.height(18.dp))
-            SeekBar(ui.positionMs, ui.durationMs, g.player::seekTo)
+            SeekBar(ui.positionMs, ui.durationMs) { ms ->
+                g.player.seekTo(ms)
+                g.room.onUserSeek(ms)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 T(Format.duration((ui.positionMs / 1000).toInt()), style = Type.small, color = Ink.faint)
                 T(Format.duration((ui.durationMs / 1000).toInt()), style = Type.small, color = Ink.faint)
@@ -106,6 +110,10 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 IconButton(Glyphs.Next, "Следующий", { g.player.next() }, enabled = ui.hasNext, box = 60.dp, dp = 32.dp)
             }
             Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                PillButton(if (g.room.inRoom) "Комната" else "Слушать вместе", { g.nav.open(Overlay.Room) }, primary = false)
+            }
+            Spacer(Modifier.height(12.dp))
             SaveChip(SaveUi.of(track, offline), OfflinePolicy.keyOf(track) in offline.savedKeys) { onSaveTap(g, track, offline) }
             Spacer(Modifier.height(18.dp))
         }

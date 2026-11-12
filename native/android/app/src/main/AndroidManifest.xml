@@ -35,6 +35,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="blink" android:host="auth" />
             </intent-filter>
+            <!-- Ссылки-приглашения в комнату: https://blinkmusic.cc/r/<код> и короткие t.blinkmusic.cc -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="blinkmusic.cc" />
+                <data android:host="www.blinkmusic.cc" />
+                <data android:host="t.blinkmusic.cc" />
+                <data android:pathPrefix="/r/" />
+            </intent-filter>
         </activity>
 
         <service

@@ -14,4 +14,6 @@ data class PlayerUi(
     val connected: Boolean = false,
     /** Сколько треков осталось в очереди после текущего. */
     val queueLeft: Int = 0,
+    /** Номер текущего трека в очереди. */
+    val index: Int = 0,
 )

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.blink.player.Graph
+import app.blink.player.Overlay
 import app.blink.player.Tab
 import app.blink.player.data.Toast
 import app.blink.player.playback.PlayerUi
@@ -51,6 +52,7 @@ import kotlinx.coroutines.flow.collectLatest
 @Composable
 fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: String = "") {
     val tab by g.nav.tab.collectAsStateWithLifecycle()
+    val overlay by g.nav.overlay.collectAsStateWithLifecycle()
     val playerOpen by g.nav.playerOpen.collectAsStateWithLifecycle()
     val player by g.player.state.collectAsStateWithLifecycle()
     val offline by g.offline.state.collectAsStateWithLifecycle()
@@ -66,6 +68,13 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
             Tab.Search -> SearchScreen(g, searchList, initialQuery)
             Tab.Downloads -> DownloadsScreen(g, downloadsList)
             Tab.Account -> AccountScreen(g)
+        }
+
+        when (overlay) {
+            Overlay.Room -> RoomScreen(g)
+            Overlay.Friends -> FriendsScreen(g)
+            Overlay.Plus -> PlusScreen(g)
+            Overlay.None -> Unit
         }
 
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 10.dp)) {

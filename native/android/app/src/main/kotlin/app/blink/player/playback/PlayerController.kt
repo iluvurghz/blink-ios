@@ -34,6 +34,9 @@ class PlayerController(private val context: Context, private val scope: Coroutin
     private var cachedId: String? = null
     private var cachedTrack: Track? = null
 
+    /** Очередь, как мы её отдали плееру (нужна комнате: в неё уходит вся очередь). Меняют только play/append. */
+    @Volatile private var known: List<Track> = emptyList()
+
     private val mutable = MutableStateFlow(PlayerUi())
     val state: StateFlow<PlayerUi> = mutable.asStateFlow()
 
@@ -95,13 +98,17 @@ class PlayerController(private val context: Context, private val scope: Coroutin
 
     // ---------- команды ----------
 
-    fun play(tracks: List<Track>, index: Int) {
+    fun play(tracks: List<Track>, index: Int) = playFrom(tracks, index, 0L, true)
+
+    /** Очередь целиком с места [positionMs]; [playing] = false оставляет на паузе (так нужно комнате). */
+    fun playFrom(tracks: List<Track>, index: Int, positionMs: Long, playing: Boolean) {
         if (tracks.isEmpty()) return
         val items = tracks.map { MediaItems.of(it) }
+        known = tracks.toList()
         command { c ->
-            c.setMediaItems(items, index.coerceIn(0, items.lastIndex), 0L)
+            c.setMediaItems(items, index.coerceIn(0, items.lastIndex), positionMs.coerceAtLeast(0))
             c.prepare()
-            c.play()
+            if (playing) c.play() else c.pause()
         }
     }
 
@@ -109,7 +116,20 @@ class PlayerController(private val context: Context, private val scope: Coroutin
     fun append(tracks: List<Track>) {
         if (tracks.isEmpty()) return
         val items = tracks.map { MediaItems.of(it) }
+        known = known + tracks
         command { c -> c.addMediaItems(items) }
+    }
+
+    /** Очередь и номер текущего трека для комнаты. */
+    fun queue(): Pair<List<Track>, Int> = known to mutable.value.index
+
+    fun setPlaying(playing: Boolean, positionMs: Long) {
+        command { c ->
+            c.seekTo(positionMs.coerceAtLeast(0))
+            if (c.playbackState == Player.STATE_IDLE) c.prepare()
+            if (playing) c.play() else c.pause()
+            sync(c)
+        }
     }
 
     fun toggle() {
@@ -165,6 +185,7 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             hasPrevious = p.hasPreviousMediaItem(),
             connected = true,
             queueLeft = (p.mediaItemCount - p.currentMediaItemIndex - 1).coerceAtLeast(0),
+            index = p.currentMediaItemIndex.coerceAtLeast(0),
         )
     }
 

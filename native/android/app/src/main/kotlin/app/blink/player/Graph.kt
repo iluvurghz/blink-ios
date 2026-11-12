@@ -16,6 +16,15 @@ import app.blink.core.offline.OfflineEvent
 import app.blink.core.offline.OfflineManager
 import app.blink.core.offline.ServerResolver
 import app.blink.core.search.SearchModel
+import app.blink.core.social.FriendsApi
+import app.blink.core.social.FriendsModel
+import app.blink.core.social.LocalPlayback
+import app.blink.core.social.PlusApi
+import app.blink.core.social.PresenceBeat
+import app.blink.core.social.RoomApi
+import app.blink.core.social.RoomSession
+import app.blink.player.playback.RoomPort
+import kotlinx.coroutines.delay
 import app.blink.core.wave.LibraryStore
 import app.blink.core.wave.LibrarySync
 import app.blink.core.wave.WaveApi
@@ -79,6 +88,12 @@ class Graph(val app: Application) {
     val player = PlayerController(app, scope)
     val actions = Actions(this)
 
+    // Социальное: комната «Слушать вместе», друзья, страница Blink+.
+    val room = RoomSession(RoomApi(http, config, auth), scope, RoomPort(player), { auth.session.value?.userId }, { toasts.show(it) })
+    val friends = FriendsModel(FriendsApi(http, config, auth), scope) { toasts.show(it) }
+    val plusApi = PlusApi(http, config, auth, PrefsKeyValue(prefs))
+    private val presence = PresenceBeat(http, config, PrefsKeyValue(prefs), scope)
+
     // Вспышка и лайки: состояние на устройстве, лайки и история синхронизируются с аккаунтом.
     val library = LibraryStore(PrefsBlob(prefs, "library"))
     private val librarySync = LibrarySync(http, config, auth, library, { auth.session.value?.userId })
@@ -126,6 +141,45 @@ class Graph(val app: Application) {
             }
             flash.attach()
             offline.start()
+        }
+        // Вошли: тянем друзей. Вышли: уходим из комнаты и чистим список.
+        scope.launch {
+            auth.session.map { it?.userId }.distinctUntilChanged().collect { userId ->
+                if (userId == null) {
+                    room.leave()
+                    friends.clear()
+                } else {
+                    friends.refresh()
+                }
+            }
+        }
+        // Плеер сменил трек или состояние: сообщаем комнате (если это не мы его подогнали) и друзьям.
+        scope.launch {
+            player.state
+                .map { LocalPlayback(it.track, it.playing, it.positionMs, it.buffering) }
+                .distinctUntilChanged { a, b -> a.trackId == b.trackId && a.playing == b.playing && a.loading == b.loading }
+                .collect { snap ->
+                    room.onLocal(snap)
+                    if (auth.session.value != null) friends.report(snap.playing, snap.track, room.room.value?.code)
+                }
+        }
+        scope.launch {
+            room.room.map { it?.code }.distinctUntilChanged().collect {
+                val ui = player.state.value
+                if (auth.session.value != null) friends.report(ui.playing, ui.track, it)
+            }
+        }
+        friends.keepAlive {
+            val ui = player.state.value
+            Triple(ui.playing && auth.session.value != null, ui.track, room.room.value?.code)
+        }
+        // «Я здесь» для счётчика онлайна в админке.
+        scope.launch {
+            while (true) {
+                val ui = player.state.value
+                presence.beat(ui.playing, ui.track)
+                delay(45_000)
+            }
         }
         scope.launch {
             offline.events.collect { e ->

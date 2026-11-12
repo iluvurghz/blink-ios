@@ -143,13 +143,22 @@ class Actions(private val g: Graph) {
         }
     }
 
-    /** Оформление подписки пока на сайте: в M1 появится встроенный экран. */
-    fun openPlus() {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(g.config.base)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    /** Страница Blink+ в приложении: тарифы, промокод, поддержка. */
+    fun openPlus() = g.nav.open(Overlay.Plus)
+
+    /** Открыть ссылку (оплата, сайт) в браузере. */
+    fun openUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             g.app.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            g.toasts.show("Откройте blinkmusic.cc в браузере: раздел Blink+")
+            g.toasts.show("Не нашёл браузер")
         }
+    }
+
+    /** Поделиться текстом через системное меню. */
+    fun share(text: String) {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        g.app.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
