@@ -3,12 +3,12 @@ package app.blink.player.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.selected
@@ -163,62 +163,96 @@ private fun favouriteArtists(liked: List<Track>): List<Pair<String, List<Track>>
 private fun Hsl.vivid(l: Double = 0.56, s: Double = 0.85): Hsl = Hsl(h, maxOf(this.s, s).coerceAtMost(1.0), maxOf(this.l, l))
 
 /**
- * Живой свет за Вспышкой (порт ui/AuraGL.jsx): три больших мягких пятна цветов обложки медленно плывут,
- * тёплое ядро дышит в такт, к низу и к краям темнеет. Рисуется 30 раз в секунду только пока экран виден.
+ * Живой свет за Вспышкой (порт шейдера ui/AuraGL.jsx): три больших мягких пятна цветов обложки плывут,
+ * тёплое ядро дышит в такт, к низу и к краям темнеет. Как на сайте, считается в маленькой картинке
+ * (54×120 точек, 20 кадров в секунду, в фоновом потоке) и растягивается на экран: свет мягкий, так что
+ * разницы не видно, а телефон не греется. Пока открыт большой плеер, стоит.
  */
 @Composable
-fun FlashAura(palette: app.blink.core.ui.Palette, energy: Float, modifier: Modifier = Modifier) {
+fun FlashAura(palette: app.blink.core.ui.Palette, energy: Float, modifier: Modifier = Modifier, paused: Boolean = false) {
     val c0 by animateColorAsState(palette.accent.vivid(0.58).color(), tween(1500), label = "aura0")
     val c1 by animateColorAsState(palette.glowB.vivid(0.5).color(), tween(1500), label = "aura1")
     val c2 by animateColorAsState(palette.glowA.vivid(0.52).color(), tween(1500), label = "aura2")
     val c3 by animateColorAsState(palette.accent.vivid(0.66, 0.9).color(), tween(1500), label = "aura3")
     val e by androidx.compose.animation.core.animateFloatAsState(energy, tween(900), label = "energy")
-    var t by remember { mutableStateOf(0f) }
-    LaunchedEffect(Unit) {
-        val start = androidx.compose.runtime.withFrameNanos { it }
+    val colors by androidx.compose.runtime.rememberUpdatedState(listOf(c0, c1, c2, c3))
+    val en by androidx.compose.runtime.rememberUpdatedState(e)
+    val bmp = remember { android.graphics.Bitmap.createBitmap(AURA_W, AURA_H, android.graphics.Bitmap.Config.ARGB_8888) }
+    val image = remember(bmp) { bmp.asImageBitmap() }
+    var frame by remember { mutableStateOf(0) }
+    LaunchedEffect(paused) {
+        val px = IntArray(AURA_W * AURA_H)
+        val start = System.nanoTime()
         while (true) {
-            androidx.compose.runtime.withFrameNanos { now -> t = (now - start) / 1e9f }
-            kotlinx.coroutines.delay(45)
+            val t = (System.nanoTime() - start) / 1e9f + 7f
+            val cs = colors
+            val energyNow = en
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { auraFrame(px, t, cs, energyNow) }
+            bmp.setPixels(px, 0, AURA_W, 0, 0, AURA_W, AURA_H)
+            frame++
+            if (paused) break
+            kotlinx.coroutines.delay(50)
         }
     }
     Canvas(modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        drawRect(Brush.verticalGradient(listOf(c1.copy(alpha = 0.10f), c0.copy(alpha = 0.06f)), startY = 0f, endY = h), size = size)
-        // гауссово пятно: exp(-k·d²) в долях ширины, вытянутое по высоте, как в шейдере сайта
-        fun blob(ux: Float, uy: Float, k: Float, c: Color, amp: Float) {
-            val r = kotlin.math.sqrt(4.6f / k) * w
-            val center = Offset(ux * w, uy * h)
-            val a = amp.coerceIn(0f, 1f)
-            scale(1f, h / w * 0.62f, center) {
-                drawCircle(
-                    Brush.radialGradient(
-                        0f to c.copy(alpha = a),
-                        0.25f to c.copy(alpha = a * 0.75f),
-                        0.5f to c.copy(alpha = a * 0.32f),
-                        0.75f to c.copy(alpha = a * 0.075f),
-                        1f to c.copy(alpha = 0f),
-                        center = center,
-                        radius = r,
-                    ),
-                    radius = r,
-                    center = center,
-                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
-                )
+        frame.let { }
+        drawImage(
+            image,
+            dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+        )
+    }
+}
+
+private const val AURA_W = 54
+private const val AURA_H = 120
+
+/** Один кадр света: то же, что фрагментный шейдер сайта, по точкам маленькой картинки. */
+private fun auraFrame(px: IntArray, t: Float, cs: List<Color>, energy: Float) {
+    val r = FloatArray(4) { cs[it].red }
+    val g = FloatArray(4) { cs[it].green }
+    val b = FloatArray(4) { cs[it].blue }
+    val s = t * 0.16f
+    val pax = 0.22f + 0.12f * kotlin.math.sin(s * 0.9f)
+    val pay = 0.78f + 0.08f * kotlin.math.cos(s * 0.7f)
+    val pbx = 0.80f + 0.10f * kotlin.math.cos(s * 0.8f + 1f)
+    val pby = 0.46f + 0.12f * kotlin.math.sin(s * 0.6f)
+    val pcx = 0.46f + 0.14f * kotlin.math.sin(s * 0.5f + 2f)
+    val pcy = 0.16f + 0.08f * kotlin.math.cos(s * 0.9f + 2f)
+    val beat = Math.pow(0.5 + 0.5 * kotlin.math.sin(t * 0.9), 3.0).toFloat()
+    val coreAmp = 0.30f + 0.18f * energy + 0.18f * beat * energy
+    fun ss(e0: Float, e1: Float, x: Float): Float {
+        val k = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f)
+        return k * k * (3 - 2 * k)
+    }
+    var i = 0
+    for (y in 0 until AURA_H) {
+        val uy = 1f - (y + 0.5f) / AURA_H
+        val dark = 0.30f + 0.70f * ss(0f, 0.6f, uy)
+        for (x in 0 until AURA_W) {
+            val ux = (x + 0.5f) / AURA_W
+            fun gau(cx: Float, cy: Float, k: Float): Float {
+                val dx = ux - cx
+                val dy = uy - cy
+                return kotlin.math.exp(-k * (dx * dx + dy * dy))
             }
+            val ga = gau(pax, pay, 6f) * 0.62f
+            val gb = gau(pbx, pby, 6.5f) * 0.50f
+            val gc = gau(pcx, pcy, 7f) * 0.42f
+            val core = gau(0.5f, 0.60f, 7f) * coreAmp
+            val halo = gau(0.5f, 0.60f, 3f) * 0.10f
+            val vx = (ux - 0.5f) * 0.9f
+            val vy = (uy - 0.5f) * 1.1f
+            val vig = 1f - 0.55f * ss(0.45f, 1.1f, kotlin.math.sqrt(vx * vx + vy * vy))
+            var cr = (r[0] + (r[1] - r[0]) * uy) * 0.07f + r[0] * ga + r[1] * gb + r[2] * gc + (r[3] * 0.92f + 0.08f) * core + r[3] * halo
+            var cg = (g[0] + (g[1] - g[0]) * uy) * 0.07f + g[0] * ga + g[1] * gb + g[2] * gc + (g[3] * 0.92f + 0.08f) * core + g[3] * halo
+            var cb = (b[0] + (b[1] - b[0]) * uy) * 0.07f + b[0] * ga + b[1] * gb + b[2] * gc + (b[3] * 0.92f + 0.08f) * core + b[3] * halo
+            val m = dark * vig * 1.3f
+            cr = 1f - kotlin.math.exp(-cr * m)
+            cg = 1f - kotlin.math.exp(-cg * m)
+            cb = 1f - kotlin.math.exp(-cb * m)
+            px[i++] = (0xFF shl 24) or ((cr * 255f).toInt().coerceIn(0, 255) shl 16) or ((cg * 255f).toInt().coerceIn(0, 255) shl 8) or (cb * 255f).toInt().coerceIn(0, 255)
         }
-        val s = t * 0.16f
-        fun sin(x: Float) = kotlin.math.sin(x)
-        fun cos(x: Float) = kotlin.math.cos(x)
-        blob(0.22f + 0.12f * sin(s * 0.9f), 1f - (0.78f + 0.08f * cos(s * 0.7f)), 6f, c0, 0.62f)
-        blob(0.80f + 0.10f * cos(s * 0.8f + 1f), 1f - (0.46f + 0.12f * sin(s * 0.6f)), 6.5f, c1, 0.55f)
-        blob(0.46f + 0.14f * sin(s * 0.5f + 2f), 1f - (0.16f + 0.08f * cos(s * 0.9f + 2f)), 7f, c2, 0.45f)
-        val beat = Math.pow((0.5 + 0.5 * kotlin.math.sin(t * 0.9)), 3.0).toFloat()
-        blob(0.5f, 0.40f, 7f, c3, 0.34f + 0.22f * e + 0.24f * beat * e)
-        blob(0.5f, 0.40f, 3f, c3, 0.12f)
-        // темнее к низу (там кнопки) и к краям
-        drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.4f to Color.Transparent, 0.7f to Color(0x5908070A), 1f to Color(0xC708070A)), size = size)
-        drawRect(Brush.radialGradient(0.5f to Color.Transparent, 1f to Color(0x8C08070A), center = Offset(w / 2, h * 0.45f), radius = maxOf(w, h) * 0.75f), size = size)
     }
 }
 
@@ -246,7 +280,8 @@ private fun FlashHero(g: Graph, modifier: Modifier) {
     }
 
     Box(modifier.fillMaxWidth()) {
-        FlashAura(palette, if (player.playing) 1f else 0.35f)
+        val playerOpen by g.nav.playerOpen.collectAsStateWithLifecycle()
+        FlashAura(palette, if (player.playing) 1f else 0.35f, paused = playerOpen)
         Column(
             Modifier.fillMaxSize().statusBarsPadding().padding(top = 10.dp, bottom = 96.dp).navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
