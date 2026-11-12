@@ -29,7 +29,7 @@ public final class ArtistApi: @unchecked Sendable {
         return s.count == 36 && s.allSatisfy { $0.isHexDigit || $0 == "-" }
     }
 
-    private static func today() -> String {
+    public static func today() -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"

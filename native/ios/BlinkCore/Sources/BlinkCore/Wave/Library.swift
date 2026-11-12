@@ -123,6 +123,26 @@ public final class LibraryStore: Library, @unchecked Sendable {
         return liked
     }
 
+    /// Добавляет в «Любимое» треки, которых там ещё нет (перенос музыки). Возвращает, сколько добавилось.
+    @discardableResult
+    public func addLikes(_ tracks: [Track]) -> Int {
+        lock.lock()
+        var have = Set(data.likes.compactMap { jsonId($0) })
+        var fresh: [JSONValue] = []
+        for t in tracks where have.insert(t.id).inserted {
+            if let raw = t.asJSON() { fresh.append(raw) }
+        }
+        if fresh.isEmpty {
+            lock.unlock()
+            return 0
+        }
+        data.likes = fresh + data.likes
+        commitLocked()
+        lock.unlock()
+        changed()
+        return fresh.count
+    }
+
     /// Трек начал играть: наверх истории, без дублей, до 60.
     public func noteRecent(_ track: Track) {
         guard let raw = track.asJSON() else { return }
