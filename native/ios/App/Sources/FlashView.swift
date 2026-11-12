@@ -18,6 +18,7 @@ struct FlashView: View {
         let playlists = graph.library.playlists
         let artists = FlashView.favouriteArtists(liked)
         return GeometryReader { geo in
+        ZStack(alignment: .top) {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -86,12 +87,11 @@ struct FlashView: View {
         }
         }
         .ignoresSafeArea(edges: .top)
-        .overlay(alignment: .top) {
-            // под часами и значками строки состояния, когда главная прокручена вниз
-            LinearGradient(colors: [Color(hex: 0x0B0A0D), Color(hex: 0x0B0A0D).opacity(0)], startPoint: .top, endPoint: .bottom)
-                .frame(height: geo.safeAreaInsets.top + 10)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
+        // под часами и значками строки состояния, когда главная прокручена вниз
+        LinearGradient(colors: [Color(hex: 0x0B0A0D), Color(hex: 0x0B0A0D).opacity(0.85), Color(hex: 0x0B0A0D).opacity(0)], startPoint: .top, endPoint: .bottom)
+            .frame(height: geo.safeAreaInsets.top + 12)
+            .offset(y: -geo.safeAreaInsets.top)
+            .allowsHitTesting(false)
         }
         }
     }
