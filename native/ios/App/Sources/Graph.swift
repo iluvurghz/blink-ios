@@ -59,6 +59,7 @@ final class Graph: ObservableObject {
     let support: SupportApi
     let cabinet: CabinetApi
     let lastfm: LastfmApi
+    let stage: StageModel
     let libraryVersion: LibraryVersion
     let pick = PickState()
     let info = InfoState()
@@ -162,6 +163,7 @@ final class Graph: ObservableObject {
         self.support = SupportApi(http: http, config: config, tokens: auth)
         self.cabinet = CabinetApi(http: http, uploader: URLSessionUploader(userAgent: agent), config: config, tokens: auth)
         self.lastfm = LastfmApi(http: http, config: config)
+        self.stage = StageModel(api: LyricsApi(http: http, config: config, tokens: auth), photos: ArtistPhotos(http: http, config: config))
         self.artists = ArtistApi(http: http, config: config, tokens: auth, api: api, userId: { auth.session?.userId })
         self.libraryVersion = LibraryVersion(0) { library.observe($0) }
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })

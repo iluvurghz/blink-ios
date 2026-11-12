@@ -32,6 +32,7 @@ struct BlinkApp: App {
                 .environmentObject(graph.libraryVersion)
                 .environmentObject(graph.pick)
                 .environmentObject(graph.info)
+                .environmentObject(graph.stage)
                 .onOpenURL { graph.handleLink($0.absoluteString) }
                 .preferredColorScheme(.dark)
                 .tint(Ink.accent)

@@ -500,3 +500,37 @@ public final class LyricsApi: @unchecked Sendable {
         return "en"
     }
 }
+
+/// Фото артиста для плеера (lib/photos.js): Deezer через сервер Blink, точное совпадение имени. Держим в памяти.
+public final class ArtistPhotos: @unchecked Sendable {
+    private let http: HTTPClient
+    private let config: BlinkConfig
+    private let lock = NSLock()
+    private var cache: [String: String?] = [:]
+
+    public init(http: HTTPClient, config: BlinkConfig) {
+        self.http = http
+        self.config = config
+    }
+
+    public func photo(_ track: Track) async -> String? {
+        let name = LyricsApi.mainArtist(track.artist)
+        if name.isEmpty { return nil }
+        let key = name.lowercased()
+        lock.lock()
+        let hit = cache[key]
+        lock.unlock()
+        if let h = hit { return h }
+        var found: String?
+        if let url = URLBuilder.make(config.base, path: "api/deezer/artist", query: [("q", name)]),
+           let res = try? await http.send(HTTPRequest(url: url, headers: ["Accept": "application/json"], timeout: 6)), res.ok,
+           let o = BlinkJSON.object(res.text), let list = JSONField.array(o, "data") {
+            let match = list.compactMap { $0 as? [String: Any] }.first { (JSONField.string($0, "name") ?? "").lowercased() == key }
+            if let u = match.flatMap({ JSONField.string($0, "picture_xl") }), !u.contains("/artist//"), !u.contains("/images/artist//") { found = u }
+            lock.lock()
+            cache[key] = .some(found)
+            lock.unlock()
+        }
+        return found
+    }
+}

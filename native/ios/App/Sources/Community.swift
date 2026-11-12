@@ -262,7 +262,7 @@ private struct PostCard: View {
     }
 }
 
-@MainActor private func report(kind: String, id: String, graph: Graph, signedIn: Bool) {
+@MainActor func report(kind: String, id: String, graph: Graph, signedIn: Bool) {
     if !signedIn {
         graph.toasts.show("Войдите, чтобы пожаловаться")
         return

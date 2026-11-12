@@ -35,6 +35,15 @@ public enum SvgPath {
             }
         }
 
+        /// Флаг дуги: одна цифра 0 или 1, может стоять впритык к следующему числу.
+        mutating func flag() -> Bool? {
+            skipSeparators()
+            guard i < s.count, s[i] == "0" || s[i] == "1" else { return nil }
+            let v = s[i] == "1"
+            i += 1
+            return v
+        }
+
         mutating func number() -> Double? {
             skipSeparators()
             let start = i
@@ -160,11 +169,81 @@ public enum SvgPath {
                 cx = ox + x
                 cy = oy + y
                 afterCurve = true
+            case "A", "a":
+                guard
+                    let rx = c.number(), let ry = c.number(), let rot = c.number(),
+                    let large = c.flag(), let sweep = c.flag(),
+                    let x = c.number(), let y = c.number()
+                else { return ops }
+                let rel = cmd == "a"
+                let ex = rel ? cx + x : x
+                let ey = rel ? cy + y : y
+                ops.append(contentsOf: arc(from: (cx, cy), to: (ex, ey), rx: rx, ry: ry, rotation: rot, large: large, sweep: sweep))
+                cx = ex
+                cy = ey
+                afterCurve = false
             default:
                 return ops
             }
         }
         return ops
+    }
+
+    /// Дуга SVG как кубические кривые (по четверти круга и меньше), формулы из приложения F.6 спецификации SVG.
+    static func arc(from p0: (Double, Double), to p1: (Double, Double), rx rx0: Double, ry ry0: Double, rotation: Double, large: Bool, sweep: Bool) -> [PathOp] {
+        let (x1, y1) = p0
+        let (x2, y2) = p1
+        if x1 == x2 && y1 == y2 { return [] }
+        var rx = abs(rx0)
+        var ry = abs(ry0)
+        if rx == 0 || ry == 0 { return [.line(x: x2, y: y2)] }
+        let phi = rotation * .pi / 180
+        let cosP = cos(phi), sinP = sin(phi)
+        let dx = (x1 - x2) / 2, dy = (y1 - y2) / 2
+        let x1p = cosP * dx + sinP * dy
+        let y1p = -sinP * dx + cosP * dy
+        let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+        if lambda > 1 {
+            rx *= lambda.squareRoot()
+            ry *= lambda.squareRoot()
+        }
+        let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
+        let den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+        var co = den == 0 ? 0 : (max(0, num / den)).squareRoot()
+        if large == sweep { co = -co }
+        let cxp = co * rx * y1p / ry
+        let cyp = -co * ry * x1p / rx
+        let ccx = cosP * cxp - sinP * cyp + (x1 + x2) / 2
+        let ccy = sinP * cxp + cosP * cyp + (y1 + y2) / 2
+        func angle(_ ux: Double, _ uy: Double, _ vx: Double, _ vy: Double) -> Double {
+            let a = atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+            return a
+        }
+        let theta1 = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+        var dtheta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+        if !sweep && dtheta > 0 { dtheta -= 2 * .pi }
+        if sweep && dtheta < 0 { dtheta += 2 * .pi }
+        let segments = max(1, Int((abs(dtheta) / (.pi / 2)).rounded(.up)))
+        let delta = dtheta / Double(segments)
+        let t = 4.0 / 3.0 * tan(delta / 4)
+        var out: [PathOp] = []
+        var th = theta1
+        func point(_ a: Double) -> (Double, Double) {
+            let px = rx * cos(a), py = ry * sin(a)
+            return (cosP * px - sinP * py + ccx, sinP * px + cosP * py + ccy)
+        }
+        func deriv(_ a: Double) -> (Double, Double) {
+            let px = -rx * sin(a), py = ry * cos(a)
+            return (cosP * px - sinP * py, sinP * px + cosP * py)
+        }
+        for k in 0..<segments {
+            let a0 = th, a1 = th + delta
+            let s0 = point(a0), e0 = k == segments - 1 ? (x2, y2) : point(a1)
+            let d0 = deriv(a0), d1 = deriv(a1)
+            out.append(.curve(c1x: s0.0 + t * d0.0, c1y: s0.1 + t * d0.1, c2x: e0.0 - t * d1.0, c2y: e0.1 - t * d1.1, x: e0.0, y: e0.1))
+            th = a1
+        }
+        return out
     }
 }
 

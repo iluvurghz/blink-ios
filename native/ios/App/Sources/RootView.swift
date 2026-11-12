@@ -1,23 +1,26 @@
 import SwiftUI
 import BlinkCore
 
-/// Размеры нижней панели. Списки оставляют под неё место, а тосты встают над ней.
+/// Размеры нижнего хрома как в mobile.css: плавающий док (64) в 10 от низа и капсула мини-плеера (72) в 10 над ним.
 enum Chrome {
-    static let tabsHeight: CGFloat = 64
-    static let miniHeight: CGFloat = 62
+    static let dock: CGFloat = 64
+    static let capsule: CGFloat = 72
+    static let gap: CGFloat = 10
 
-    /// Высота панели над нижней безопасной зоной (вкладки и, если что-то играет, мини-плеер).
+    /// Высота над нижней безопасной зоной, которую занимает хром (списки оставляют под него место).
     static func height(hasTrack: Bool) -> CGFloat {
-        return hasTrack ? tabsHeight + miniHeight : tabsHeight
+        return hasTrack ? gap + dock + gap + capsule : gap + dock
     }
 }
 
 /// Корень интерфейса. Четыре вкладки живут все сразу (прокрутка и текст в поле не теряются), поверх них
-/// плавающая панель, большой плеер и тосты. Порт ui/Root.kt.
+/// плавающий док с капсулой мини-плеера, большой плеер и тосты. Порт ui/Root.kt.
 struct RootView: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var nav: NavStore
     @EnvironmentObject private var hasTrack: HasTrackStore
+    @EnvironmentObject private var currentId: CurrentIdStore
+    @EnvironmentObject private var stage: StageModel
 
     var body: some View {
         let tab = nav.value.tab
@@ -51,60 +54,80 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             ToastHost(bottomPadding: playerOpen ? 96 : chrome + 12)
         }
-        .animation(.easeOut(duration: 0.26), value: playerOpen)
+        .environment(\.stageAccent, stage.palette.accent.color)
+        .animation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.38), value: playerOpen)
+        .task(id: currentId.value) { stage.trackChanged(graph.player.current.track) }
     }
 }
 
-// ---------- нижняя панель ----------
+// ---------- нижний хром ----------
 
-/// Одна панель во всю ширину: сверху мини-плеер (если что-то играет), под ним вкладки. Фон уходит под
-/// индикатор «домой». Клавиатура панель не двигает: она остаётся под ней, как на Android.
+/// Плавающий док с вкладками и капсула мини-плеера над ним; под ними мягкое затемнение вместо чёрной полосы.
+/// Клавиатура хром не двигает: он остаётся под ней, как на Android.
 private struct ChromeView: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var nav: NavStore
     @EnvironmentObject private var downloading: DownloadingStore
+    @EnvironmentObject private var stage: StageModel
     let withTrack: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            if withTrack {
-                MiniPlayer()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                Rectangle().fill(Ink.line).frame(height: 1)
+        GeometryReader { geo in
+            let safe = geo.safeAreaInsets.bottom
+            ZStack(alignment: .bottom) {
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: Color(hex: 0x08070A, opacity: 0.88), location: 0.62)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Chrome.dock + 70 + safe + Chrome.gap)
+                    .allowsHitTesting(false)
+                VStack(spacing: Chrome.gap) {
+                    if withTrack {
+                        MiniCapsule()
+                            .padding(.horizontal, 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    Dock(tab: nav.value.tab, downloading: downloading.value, palette: stage.palette) { graph.nav.go($0) }
+                        .padding(.horizontal, 12)
+                }
+                .padding(.bottom, Chrome.gap + safe)
             }
-            BottomBar(tab: nav.value.tab, downloading: downloading.value) { graph.nav.go($0) }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+            .ignoresSafeArea(edges: .bottom)
         }
-        .frame(maxWidth: .infinity)
-        .background(
-            Ink.ink2
-                .overlay(alignment: .top) { Rectangle().fill(Ink.line2).frame(height: 1) }
-                .ignoresSafeArea(edges: .bottom)
-        )
         .animation(.easeOut(duration: 0.22), value: withTrack)
         .ignoresSafeArea(.keyboard)
     }
 }
 
-private struct BottomBar: View {
+/// Док с вкладками (.titlebar .nav на телефоне): стекло, подкрашенное обложкой, крупные значки без подписей,
+/// под выбранным мягкая светящаяся пилюля цвета акцента.
+private struct Dock: View {
+    @Environment(\.stageAccent) private var accent
     let tab: AppTab
     let downloading: Bool
+    let palette: Palette
     let onTab: (AppTab) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            TabItem(glyph: .bolt, label: "Вспышка", active: tab == .flash, dot: false) { onTab(.flash) }
-            TabItem(glyph: .search, label: "Поиск", active: tab == .search, dot: false) { onTab(.search) }
-            TabItem(glyph: .download, label: "Скачанное", active: tab == .downloads, dot: downloading) { onTab(.downloads) }
-            TabItem(glyph: .person, label: "Профиль", active: tab == .account, dot: false) { onTab(.account) }
+            TabItem(icon: .bolt, label: "Вспышка", active: tab == .flash, dot: false) { onTab(.flash) }
+            TabItem(icon: .search, label: "Поиск", active: tab == .search, dot: false) { onTab(.search) }
+            TabItem(icon: .download, label: "Скачанное", active: tab == .downloads, dot: downloading) { onTab(.downloads) }
+            TabItem(icon: .user, label: "Профиль", active: tab == .account, dot: false) { onTab(.account) }
         }
-        .padding(.horizontal, 8)
-        .frame(height: Chrome.tabsHeight)
+        .padding(6)
+        .frame(height: Chrome.dock)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(palette.glowA.mix(0.16, with: (18.0 / 255, 16.0 / 255, 22.0 / 255, 0.94)))
+                .animation(.easeOut(duration: 1.2), value: palette)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Color.white.opacity(0.09), lineWidth: 1))
+        .shadow(color: .black.opacity(0.8), radius: 20, y: 18)
     }
 }
 
-/// Значок над подписью. Выбранная вкладка: акцентный цвет и мягкая капсула под значком. Подписи видны всегда.
 private struct TabItem: View {
-    let glyph: Glyphs
+    @Environment(\.stageAccent) private var accent
+    let icon: LineIcon
     let label: String
     let active: Bool
     let dot: Bool
@@ -112,47 +135,55 @@ private struct TabItem: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                ZStack(alignment: .topTrailing) {
-                    GlyphView(glyph, color: active ? Ink.accent : Ink.mute, size: 22)
-                        .frame(width: 56, height: 30)
-                        .background(Capsule().fill(active ? Ink.accentSoft : Color.clear))
-                    if dot {
-                        Circle().fill(Ink.accent).frame(width: 8, height: 8)
-                            .overlay(Circle().stroke(Ink.ink2, lineWidth: 2))
-                            .offset(x: -10, y: 2)
-                    }
+            ZStack(alignment: .topTrailing) {
+                LineIconView(icon, color: active ? accent : Ink.bone.opacity(0.55), size: 26)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(active ? accent.opacity(0.2) : .clear)
+                            .shadow(color: active ? accent.opacity(0.6) : .clear, radius: 12)
+                            .padding(.vertical, 3)
+                            .padding(.horizontal, 10)
+                    )
+                if dot {
+                    Circle().fill(accent).frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(Ink.ink2, lineWidth: 2))
+                        .offset(x: -18, y: 10)
                 }
-                T(label, BType.label.sized(11, tracking: 0.2), color: active ? Ink.accent : Ink.mute, lines: 1, align: .center)
-                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: Chrome.tabsHeight)
             .contentShape(Rectangle())
         }
-        .buttonStyle(TapStyle())
-        .animation(.easeOut(duration: 0.18), value: active)
+        .buttonStyle(PressScale())
+        .animation(.easeOut(duration: 0.2), value: active)
         .accessibilityLabel(label)
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
 
-/// Строка мини-плеера внутри панели: обложка, название, пауза и следующий; тонкая полоска хода на верхней кромке.
-private struct MiniPlayer: View {
+/// Капсула мини-плеера (.capsule на телефоне): стекло цвета обложки, ход трека заливкой акцента позади,
+/// обложка, название, сердечко и кнопка играть. Тап открывает плеер, свайп вбок листает треки.
+private struct MiniCapsule: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var player: PlayerStore
+    @EnvironmentObject private var flash: FlashController
+    @EnvironmentObject private var stage: StageModel
 
     var body: some View {
         let ui = player.value
         if let track = ui.track {
             let fraction = ui.durationMs > 0 ? min(1, max(0, Double(ui.positionMs) / Double(ui.durationMs))) : 0
-            HStack(spacing: 0) {
+            let accent = stage.palette.accent.color
+            let liked = flash.isLiked(track)
+            HStack(spacing: 6) {
                 Button(action: { graph.nav.openPlayer(true) }) {
                     HStack(spacing: 12) {
-                        Cover(track.artwork, size: 44, radius: 10, note: 20)
-                        VStack(alignment: .leading, spacing: 1) {
-                            T(track.title, BType.title.sized(14), lines: 1)
-                            T(track.artist, .small, color: Ink.mute, lines: 1)
+                        NetImage(url: ArtUrl.scaled(track.artwork, 100))
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(track.title).font(.custom("Unbounded-Bold", fixedSize: 17)).tracking(-0.51).foregroundColor(Ink.bone).lineLimit(1)
+                            Text(track.artist).font(.custom("Manrope-Medium", fixedSize: 14)).foregroundColor(Ink.bone.opacity(0.62)).lineLimit(1)
                         }
                         Spacer(minLength: 0)
                     }
@@ -161,20 +192,38 @@ private struct MiniPlayer: View {
                 .buttonStyle(TapStyle())
                 .accessibilityLabel(track.title + ", " + track.artist)
                 .accessibilityHint("Открыть плеер")
-                IconButton(ui.playing ? .pause : .play, ui.playing ? "Пауза" : "Играть", size: 26) { graph.player.toggle() }
-                IconButton(.next, "Следующий", enabled: ui.hasNext) { graph.player.next() }
-            }
-            .padding(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 8))
-            .frame(height: Chrome.miniHeight)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(Ink.accent)
-                        .frame(width: geo.size.width * CGFloat(fraction), height: 2)
-                        .animation(.linear(duration: 0.5), value: fraction)
+                StageIcon(liked ? .heartFill : .heart, liked ? "Убрать из любимого" : "Любимое", size: 22, box: 48, on: liked) { flash.toggleLike(track) }
+                PlayIris(playing: ui.playing, buffering: ui.buffering, size: 48, accent: accent, ink: stage.palette.accentInk.color, glow: false) {
+                    graph.player.toggle()
                 }
-                .frame(height: 2)
+                .padding(.trailing, 2)
             }
+            .padding(.horizontal, 10)
+            .frame(height: Chrome.capsule)
+            .background(
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Rectangle().fill(stage.palette.glowA.mix(0.34, with: (16.0 / 255, 14.0 / 255, 19.0 / 255, 0.82)))
+                    GeometryReader { g in
+                        Rectangle().fill(accent.opacity(0.26))
+                            .frame(width: g.size.width * CGFloat(fraction))
+                            .animation(.linear(duration: 0.25), value: fraction)
+                    }
+                }
+                .animation(.easeOut(duration: 1.2), value: stage.palette)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(0.7), radius: 20, y: 18)
+            .gesture(
+                DragGesture(minimumDistance: 20).onEnded { v in
+                    if abs(v.translation.width) > abs(v.translation.height), abs(v.translation.width) > 60 {
+                        if v.translation.width < 0 { graph.player.next() } else { graph.player.previous() }
+                    } else if v.translation.height < -40 {
+                        graph.nav.openPlayer(true)
+                    }
+                }
+            )
         }
     }
 }

@@ -103,4 +103,23 @@ final class LyricsTests: XCTestCase {
         XCTAssertEqual(ArtUrl.scaled("https://a/x/600x600bb.jpg", 100), "https://a/x/100x100bb.jpg")
         XCTAssertEqual(ArtUrl.scaled("https://i1.sndcdn.com/a-large.jpg", 100), "https://i1.sndcdn.com/a-t300x300.jpg")
     }
+
+    func testLineIconsParseWithArcs() {
+        for icon in LineIcon.allCases {
+            for part in icon.parts {
+                let ops = SvgPath.parse(part.d)
+                XCTAssertFalse(ops.isEmpty, "\(icon)")
+                if part.d.contains("Z") { XCTAssertEqual(ops.last, .close, "\(icon)") }
+            }
+        }
+        // полукруг радиуса 2 от (0,0) до (4,0): две четверти, середина внизу (sweep 0 из (0,0) идёт через y>0? проверяем концы)
+        let ops = SvgPath.parse("M0 0a2 2 0 1 0 4 0")
+        XCTAssertEqual(ops.count, 3)
+        if case .curve(_, _, _, _, let x, let y) = ops.last! {
+            XCTAssertEqual(x, 4, accuracy: 1e-9)
+            XCTAssertEqual(y, 0, accuracy: 1e-9)
+        } else {
+            XCTFail("ждали кривую")
+        }
+    }
 }

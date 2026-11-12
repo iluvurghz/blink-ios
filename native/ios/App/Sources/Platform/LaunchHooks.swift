@@ -28,6 +28,16 @@ enum LaunchHooks {
         return value == "1" || value == "blink" ? value : nil
     }
 
+    /// Что показать в большом плеере: `lyrics` (текст на карточке), `full` (текст во весь экран), `queue`.
+    static var startStage: String? {
+        return env["BLINK_START_STAGE"]
+    }
+
+    /// `1`: включить трек, но плеер не открывать (виден мини-плеер).
+    static var startMini: Bool {
+        return env["BLINK_START_MINI"] == "1"
+    }
+
     /// Вызывается один раз после старта приложения.
     static func run(search: SearchModel, actions: Actions, nav: Nav, player: PlayerController) {
         if let tab = startTab { nav.go(tab) }
@@ -44,7 +54,7 @@ enum LaunchHooks {
                 }
                 if let first = pick {
                     actions.play([first], at: 0)
-                    nav.openPlayer(true)
+                    if !startMini { nav.openPlayer(true) }
                     // Состояние плеера в журнал каждые три секунды: по нему видно, пошёл ли звук (см. Diag).
                     for step in 1...6 {
                         try? await Task.sleep(nanoseconds: 3_000_000_000)

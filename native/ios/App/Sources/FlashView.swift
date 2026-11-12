@@ -60,7 +60,7 @@ struct FlashView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                SeekBar(positionMs: ui.positionMs, durationMs: ui.durationMs) { graph.player.seek(toMs: $0) }
+                StageSeek(positionMs: ui.positionMs, durationMs: ui.durationMs, accent: Ink.accent) { graph.player.seek(toMs: $0) }
                     .padding(.top, 12)
                 HStack {
                     IconButton(.thumbDown, "Не моё", color: Ink.mute, box: 52, size: 26) { flash.dislike(track) }

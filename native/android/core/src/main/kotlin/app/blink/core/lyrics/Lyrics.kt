@@ -409,3 +409,30 @@ class LyricsApi(http: OkHttpClient, private val config: BlinkConfig, private val
         }
     }
 }
+
+/** Фото артиста для плеера (lib/photos.js): Deezer через сервер Blink, точное совпадение имени. Держим в памяти. */
+class ArtistPhotos(http: OkHttpClient, private val config: BlinkConfig) {
+    private val client = http.withCallTimeout(6)
+    private val cache = ConcurrentHashMap<String, Optional>()
+
+    private class Optional(val url: String?)
+
+    suspend fun photo(track: Track): String? {
+        val name = LyricsApi.mainArtist(track.artist)
+        if (name.isEmpty()) return null
+        val key = name.lowercase()
+        cache[key]?.let { return it.url }
+        return try {
+            val url = "${config.base}/api/deezer/artist".toHttpUrlOrNull()!!.newBuilder().addQueryParameter("q", name).build()
+            val res = client.newCall(Request.Builder().url(url).header("Accept", "application/json").build()).text()
+            if (res.code !in 200..299) return null
+            val hit = BlinkJson.parseToJsonElement(res.text).obj()?.get("data").arr().orEmpty().mapNotNull { it.obj() }
+                .firstOrNull { it.str("name")?.lowercase() == key }
+            val u = hit?.str("picture_xl")?.takeIf { !it.contains("/artist//") && !it.contains("/images/artist//") }
+            cache[key] = Optional(u)
+            u
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
