@@ -18,6 +18,7 @@ struct LibraryOverlay: View {
         case .mine(let id): return graph.library.playlist(id)?.name ?? "Плейлист"
         case .shared: return "Плейлист по ссылке"
         case .editorial: return "Подборка Blink"
+        case .importMusic: return "Перенос музыки"
         }
     }
 
@@ -32,6 +33,7 @@ struct LibraryOverlay: View {
                     case .mine(let id): MyPlaylist(id: id)
                     case .shared(let code): RemotePlaylist(key: "s" + code, load: { try await graph.shared.fetchShared(code) })
                     case .editorial(let id): RemotePlaylist(key: "e" + id, load: { try await graph.shared.editorialOne(id) })
+                    case .importMusic: ImportPanel()
                     }
                 }
                 .padding(.horizontal, 20)
@@ -64,6 +66,20 @@ private struct LibraryHome: View {
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Ink.ink2))
         }
         .buttonStyle(TapStyle())
+        Button { graph.nav.libraryTo(.importMusic) } label: {
+            HStack(spacing: 14) {
+                GlyphView(.download, color: Ink.accent, size: 26)
+                VStack(alignment: .leading, spacing: 0) {
+                    T("Перенос музыки", .title)
+                    T("Из Яндекс Музыки, Spotify или списка", .small, color: Ink.mute)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Ink.ink2))
+        }
+        .buttonStyle(TapStyle())
+        .padding(.top, 10)
         T("МОИ ПЛЕЙЛИСТЫ", .label, color: Ink.faint)
             .padding(.top, 18)
         HStack(spacing: 8) {
@@ -454,6 +470,111 @@ private struct ArtistTracks: View {
                 }
                 .buttonStyle(TapStyle())
             }
+        }
+    }
+}
+
+
+/// Перенос музыки: ссылка, CSV или список «Артист — Название» в «Любимое» или в новый плейлист.
+private struct ImportPanel: View {
+    @EnvironmentObject private var graph: Graph
+    @EnvironmentObject private var auth: AuthStore
+    @State private var text = ""
+    @State private var toLikes = true
+    @State private var reading = false
+    @State private var progress: (Int, Int)? = nil
+    @State private var error: String? = nil
+    @State private var result: ImportRun? = nil
+    @State private var resultToLikes = true
+    @State private var picking = false
+
+    var body: some View {
+        if let r = result {
+            T("Готово", .h1)
+            T("Перенесено \(Format.tracks(r.found.count)) из \(r.total) " + (resultToLikes ? "в «Любимое»." : "в плейлист «\(r.title)»."), .body, color: Ink.mute)
+                .padding(.top, 8)
+            if !r.missed.isEmpty {
+                T("НЕ НАШЛИСЬ (\(r.missed.count))", .label, color: Ink.faint)
+                    .padding(.top, 14)
+                ForEach(Array(r.missed.prefix(50).enumerated()), id: \.offset) { _, m in
+                    T((m.artist.isEmpty ? "" : m.artist + " — ") + m.title, .small, color: Ink.mute, lines: 1)
+                }
+            }
+            PillButton("Отлично") {
+                result = nil
+                text = ""
+                graph.nav.libraryTo(.home)
+            }
+            .padding(.top, 16)
+        } else {
+            T("Скопируйте ссылку на плейлист или альбом (Яндекс Музыка, Spotify), загрузите CSV из TuneMyMusic или вставьте список: по треку в строке, «Артист — Название». Плейлист должен быть публичным.", .body, color: Ink.mute)
+            TextEditor(text: $text)
+                .font(BType.body.font)
+                .foregroundColor(Ink.bone)
+                .tint(Ink.accent)
+                .scrollContentBackground(.hidden)
+                .padding(12)
+                .frame(height: 160)
+                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Ink.ink2))
+                .padding(.top, 12)
+            HStack(spacing: 8) {
+                PillButton("Выбрать файл", primary: false) { picking = true }
+                Chip(text: "В «Любимое»", selected: toLikes) { toLikes = true }
+                Chip(text: "В новый плейлист", selected: !toLikes) { toLikes = false }
+            }
+            .padding(.top, 10)
+            if reading || progress != nil {
+                T(reading ? "Читаю плейлист…" : "Ищу треки… \(progress?.0 ?? 0) из \(progress?.1 ?? 0)", .small, color: Ink.mute)
+                    .padding(.top, 14)
+                ProgressView(value: reading ? 0 : Double(progress?.0 ?? 0), total: Double(max(1, progress?.1 ?? 1)))
+                    .tint(Ink.accent)
+            } else {
+                let src = Importer.sourceOf(text)
+                PillButton(src.map { "Перенести из " + $0.title } ?? "Перенести", enabled: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { start(src != nil) }
+                    .padding(.top, 14)
+                if let e = error {
+                    T(e, .small, color: Ink.danger)
+                        .padding(.top, 8)
+                }
+            }
+        }
+        Color.clear.frame(height: 0)
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { res in
+                guard case .success(let url) = res else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                if let data = try? Data(contentsOf: url) { text = String(decoding: data, as: UTF8.self) }
+            }
+    }
+
+    private func start(_ isLink: Bool) {
+        if auth.value == nil {
+            graph.toasts.show("Войдите, чтобы переносить музыку")
+            graph.nav.go(.account)
+            return
+        }
+        error = nil
+        reading = isLink
+        let saveToLikes = toLikes
+        let input = text
+        Task { @MainActor in
+            do {
+                let run = try await graph.importer.run(input) { d, t in
+                    DispatchQueue.main.async {
+                        reading = false
+                        progress = (d, t)
+                    }
+                }
+                if saveToLikes { graph.library.addLikes(run.found) } else { graph.library.createPlaylist(run.title, tracks: run.found) }
+                resultToLikes = saveToLikes
+                result = run
+            } catch let e as ImportError {
+                error = e.message
+            } catch {
+                error = "Не получилось, попробуйте ещё раз"
+            }
+            reading = false
+            progress = nil
         }
     }
 }

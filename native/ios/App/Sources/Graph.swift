@@ -54,6 +54,7 @@ final class Graph: ObservableObject {
     let library: LibraryStore
     let shared: SharedApi
     let artists: ArtistApi
+    let importer: Importer
     let libraryVersion: LibraryVersion
     let pick = PickState()
     private let librarySync: LibrarySync
@@ -151,6 +152,7 @@ final class Graph: ObservableObject {
         )
         self.library = library
         self.shared = SharedApi(http: http, config: config, tokens: auth, userId: { auth.session?.userId }, userName: { auth.session?.name ?? auth.session?.email })
+        self.importer = Importer(http: http, config: config, api: api)
         self.artists = ArtistApi(http: http, config: config, tokens: auth, api: api, userId: { auth.session?.userId })
         self.libraryVersion = LibraryVersion(0) { library.observe($0) }
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })

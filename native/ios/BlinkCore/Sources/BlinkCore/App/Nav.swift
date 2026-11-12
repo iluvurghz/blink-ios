@@ -25,6 +25,7 @@ public enum LibRoute: Equatable, Sendable {
     case mine(String)
     case shared(String)
     case editorial(String)
+    case importMusic
 }
 
 public struct NavState: Equatable, Sendable {
