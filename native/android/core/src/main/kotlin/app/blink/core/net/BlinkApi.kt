@@ -80,7 +80,15 @@ class BlinkApi(
             .header("Authorization", "Bearer $token")
             .header("Accept", "application/json")
             .build()
-        val res = client.newCall(req).text()
+        val res = try {
+            client.newCall(req).text()
+        } catch (e: IOException) {
+            // supabase.co режут операторы: повторяем через зеркало на сайте.
+            val mirror = config.supabaseMirror.toHttpUrl()
+            val alt = url.newBuilder().scheme(mirror.scheme).host(mirror.host).port(mirror.port).encodedPath("/sb" + url.encodedPath).build()
+            if (config.supabaseMirror == config.supabase) throw e
+            client.newCall(req.newBuilder().url(alt).build()).text()
+        }
         if (res.code !in 200..299) throw IOException("catalog ${res.code}")
         val arr = try {
             BlinkJson.parseToJsonElement(res.text).arr()

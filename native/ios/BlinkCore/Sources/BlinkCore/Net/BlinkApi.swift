@@ -136,11 +136,16 @@ public final class BlinkApi: Sendable {
 
     private func restTracks(_ url: URL) async throws -> [Track] {
         let token = await tokens?.accessToken() ?? config.supabaseAnonKey
-        let res = try await http.send(HTTPRequest(
-            url: url,
-            headers: ["apikey": config.supabaseAnonKey, "Authorization": "Bearer " + token, "Accept": "application/json"],
-            timeout: BlinkApi.callTimeout
-        ))
+        let headers = ["apikey": config.supabaseAnonKey, "Authorization": "Bearer " + token, "Accept": "application/json"]
+        let res: HTTPResponse
+        do {
+            res = try await http.send(HTTPRequest(url: url, headers: headers, timeout: BlinkApi.callTimeout))
+        } catch {
+            // supabase.co режут операторы: повторяем через зеркало на сайте.
+            let text = url.absoluteString
+            guard config.supabaseMirror != config.supabase, text.hasPrefix(config.supabase), let alt = URL(string: config.supabaseMirror + String(text.dropFirst(config.supabase.count))) else { throw error }
+            res = try await http.send(HTTPRequest(url: alt, headers: headers, timeout: BlinkApi.callTimeout))
+        }
         if !res.ok { throw ServerError("catalog", res.status) }
         guard let arr = BlinkJSON.array(res.text) else { return [] }
         return arr.compactMap { ($0 as? [String: Any]).flatMap { fromLicRow($0) } }

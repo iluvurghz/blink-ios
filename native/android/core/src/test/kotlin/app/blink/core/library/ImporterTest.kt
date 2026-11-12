@@ -79,3 +79,26 @@ class ImporterTest {
         Unit
     }
 }
+
+class MirrorFallbackTest {
+    @Test
+    fun catalogFallsBackToTheMirrorWhenSupabaseIsBlocked() = runBlocking {
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.path.orEmpty().startsWith("/sb/rest/v1/lic_tracks")) MockResponse().setBody("""[{"id":"11111111-2222-3333-4444-555555555555","title":"Песня","artist_name":"Ник"}]""")
+                else MockResponse().setResponseCode(404)
+        }
+        server.start()
+        try {
+            val base = server.url("/").toString().trimEnd('/')
+            // supabase.co «закрыт»: порт, где никто не слушает
+            val cfg = BlinkConfig(baseUrl = base, supabaseUrl = "http://127.0.0.1:1", supabaseAnonKey = "anon")
+            val list = BlinkApi(OkHttpClient(), cfg).latestLicensed(5)
+            assertEquals(listOf("b:11111111-2222-3333-4444-555555555555"), list.map { it.id })
+        } finally {
+            server.shutdown()
+        }
+        Unit
+    }
+}
