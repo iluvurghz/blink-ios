@@ -80,10 +80,10 @@ fun PlayerScreen(g: Graph, ui: PlayerUi, offline: OfflineState, onClose: () -> U
                 }
             }
             Spacer(Modifier.height(18.dp))
-            SeekBar(ui.positionMs, ui.durationMs) { ms ->
+            SeekBar(ui.positionMs, ui.durationMs, onSeek = { ms ->
                 g.player.seekTo(ms)
                 g.room.onUserSeek(ms)
-            }
+            })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 T(Format.duration((ui.positionMs / 1000).toInt()), style = Type.small, color = Ink.faint)
                 T(Format.duration((ui.durationMs / 1000).toInt()), style = Type.small, color = Ink.faint)
