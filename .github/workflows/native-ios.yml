@@ -1,0 +1,246 @@
+name: native-ios
+
+# Нативное приложение Blink для iOS. Ядро (BlinkCore) собирается и проверяется на Linux: это дёшево.
+# Сборка на macOS в десять раз дороже по минутам, поэтому .ipa собирается только по кнопке (workflow_dispatch).
+on:
+  push:
+    branches: ["native/**", main]
+    paths:
+      - "native/ios/**"
+      - "native/design/**"
+      - ".github/workflows/native-ios.yml"
+  workflow_dispatch:
+    inputs:
+      ipa:
+        description: "Собрать неподписанный .ipa на macOS (минуты macOS дорогие)"
+        type: boolean
+        default: false
+      screens:
+        description: "Запустить приложение в симуляторе iPhone и снять экраны (ещё минуты macOS)"
+        type: boolean
+        default: false
+
+# Пуш не должен отменять уже идущую сборку на macOS, поэтому группа зависит ещё и от типа запуска.
+concurrency:
+  group: native-ios-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  core-tests:
+    name: Тесты ядра (Swift на Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: swift:6.0
+    defaults:
+      run:
+        working-directory: native/ios/BlinkCore
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версия Swift
+        run: swift --version
+      - name: Сборка
+        run: swift build 2>&1
+      - name: Тесты
+        run: swift test 2>&1
+      # SwiftUI на Linux не собрать, но опечатки и сломанные скобки видно сразу, до дорогой сборки на macOS.
+      - name: Синтаксис экранов
+        working-directory: native/ios
+        run: |
+          files="$(find App/Sources -name '*.swift' | sort)"
+          echo "$files"
+          swiftc -swift-version 5 -parse $files
+
+  ipa:
+    name: Сборка на macOS
+    if: github.event_name == 'workflow_dispatch' && (inputs.ipa || inputs.screens)
+    needs: core-tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версии
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: XcodeGen
+        run: brew install xcodegen
+      - name: Ключ входа (публичный)
+        env:
+          FROM_SECRET: ${{ secrets.BLINK_SUPABASE_ANON_KEY }}
+        run: |
+          key="$FROM_SECRET"
+          if [ -z "$key" ]; then key="$(python3 native/tools/find_anon_key.py || true)"; fi
+          if [ -n "$key" ]; then
+            echo "::add-mask::$key"
+            echo "BLINK_SUPABASE_ANON_KEY=$key" >> "$GITHUB_ENV"
+            echo "Ключ входа найден: приложение соберётся со входом."
+          else
+            echo "::warning::Ключ входа не найден: приложение соберётся без входа. Добавьте секрет BLINK_SUPABASE_ANON_KEY."
+          fi
+      - name: Проект Xcode
+        working-directory: native/ios
+        run: xcodegen generate
+      - name: Сборка без подписи
+        if: inputs.ipa
+        working-directory: native/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Blink.xcodeproj -scheme Blink -configuration Release \
+            -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            BLINK_SUPABASE_ANON_KEY="${BLINK_SUPABASE_ANON_KEY:-}" \
+            build 2>&1 | tee build.log
+      - name: Ошибки сборки
+        if: failure() && inputs.ipa
+        working-directory: native/ios
+        run: |
+          echo "---- error: ----"
+          grep -E "error:" build.log | sort -u | head -80 || true
+          echo "---- warning: (первые 40) ----"
+          grep -E "warning:" build.log | sort -u | head -40 || true
+      - name: Упаковка .ipa
+        id: pack
+        if: inputs.ipa
+        working-directory: native/ios
+        run: |
+          app="build/Build/Products/Release-iphoneos/Blink.app"
+          test -d "$app"
+          rm -rf Payload && mkdir Payload && cp -R "$app" Payload/
+          out="Blink-ios-alpha-${GITHUB_RUN_NUMBER}.ipa"
+          zip -qry "$out" Payload
+          ls -la "$out"
+          echo "path=native/ios/$out" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: inputs.ipa
+        with:
+          name: Blink-ios-alpha
+          path: ${{ steps.pack.outputs.path }}
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.ipa
+        with:
+          name: xcodebuild-log
+          path: native/ios/build.log
+          if-no-files-found: ignore
+      - name: Свежая сборка на странице релизов
+        if: inputs.ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-alpha --cleanup-tag --yes || true
+          gh release create ios-alpha "${{ steps.pack.outputs.path }}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для iPhone, сборка ${GITHUB_RUN_NUMBER}" \
+            --notes "Тестовая сборка (alpha), без подписи: ставится через ваш сертификат (Sideloadly, AltStore, TrollStore). Ветка: ${GITHUB_REF_NAME}, коммит ${GITHUB_SHA::7}."
+
+      # Симулятор iPhone: ставим сборку, запускаем и снимаем экраны. Нажимать на экран нельзя, поэтому вкладку,
+      # запрос и «открой плеер» передаём переменными окружения (см. Platform/LaunchHooks.swift).
+      - name: Сборка для симулятора
+        id: simbuild
+        if: inputs.screens
+        working-directory: native/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Blink.xcodeproj -scheme Blink -configuration Release \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath build-sim \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            BLINK_SUPABASE_ANON_KEY="${BLINK_SUPABASE_ANON_KEY:-}" \
+            build 2>&1 | tee build-sim.log | tail -n 25
+      - name: Запуск в симуляторе и снимки экрана
+        if: inputs.screens
+        timeout-minutes: 20
+        working-directory: native/ios
+        run: |
+          app="build-sim/Build/Products/Release-iphonesimulator/Blink.app"
+          test -d "$app"
+          sim="$(python3 ../tools/pick_simulator.py)"
+          udid="$(printf '%s' "$sim" | cut -f1)"
+          name="$(printf '%s' "$sim" | cut -f2)"
+          echo "Симулятор: $name ($udid)"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$udid" "$app"
+          mkdir -p shots
+          alive() {
+            local list
+            list="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null || true)"
+            grep -q "UIKitApplication:app.blink.player.alpha" <<<"$list"
+          }
+          EARLY=""
+          shot() {  # shot <файл> <секунд ждать> <ПЕРЕМЕННАЯ=значение>; если задан EARLY, ещё и ранний снимок через 4 секунды
+            local file="$1" secs="$2"; shift 2
+            xcrun simctl terminate "$udid" app.blink.player.alpha 2>/dev/null || true
+            env "$@" xcrun simctl launch "$udid" app.blink.player.alpha
+            if [ -n "$EARLY" ]; then
+              sleep 4
+              xcrun simctl io "$udid" screenshot --type=png "shots/$EARLY.png" || true
+              secs=$((secs - 4))
+            fi
+            sleep "$secs"
+            # Снимок делаем до проверки: если приложение упало, на нём останется след.
+            xcrun simctl io "$udid" screenshot --type=png "shots/$file.png" || true
+            if ! alive; then
+              echo "::error::Приложение не живо после запуска ($file)"
+              cp ~/Library/Logs/DiagnosticReports/Blink*.ips shots/ 2>/dev/null || true
+              for f in $(ls -t ~/Library/Logs/DiagnosticReports/Blink*.ips 2>/dev/null | head -1); do head -c 6000 "$f"; done
+              exit 1
+            fi
+            echo "снимок $file: ok"
+          }
+          shot 01-search 14 SIMCTL_CHILD_BLINK_START_TAB=search
+          shot 02-downloads 6 SIMCTL_CHILD_BLINK_START_TAB=downloads
+          shot 03-account 6 SIMCTL_CHILD_BLINK_START_TAB=account
+          shot 04-results 14 SIMCTL_CHILD_BLINK_START_TAB=search SIMCTL_CHILD_BLINK_START_QUERY=queen
+          # Плеер: ранний снимок ловит тост об ошибке (он живёт пять секунд), поздний показывает итог.
+          EARLY=05a-player-early
+          shot 05-player 22 SIMCTL_CHILD_BLINK_START_PLAYER=1
+          EARLY=""
+          # Без входа свежий трек Blink не играет: плеер должен ответить тостом «Войдите в аккаунт».
+          shot 06-player-signin 5 SIMCTL_CHILD_BLINK_START_PLAYER=blink
+          # Плеер как на сайте: текст на карточке, текст во весь экран, очередь и мини-плеер над доком.
+          shot 07-lyrics 24 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_STAGE=lyrics
+          shot 08-lyrics-full 24 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_STAGE=full
+          shot 09-queue 16 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_STAGE=queue
+          shot 10-mini 16 SIMCTL_CHILD_BLINK_START_PLAYER=1 SIMCTL_CHILD_BLINK_START_MINI=1
+          shot 11-home 14 SIMCTL_CHILD_BLINK_START_TAB=flash SIMCTL_CHILD_BLINK_START_LIKES=8
+          shot 12-collection 10 SIMCTL_CHILD_BLINK_START_TAB=flash SIMCTL_CHILD_BLINK_START_SCROLL=collection
+          shot 13-likes 8 SIMCTL_CHILD_BLINK_START_LIBRARY=likes
+          shot 14-flash-on 24 SIMCTL_CHILD_BLINK_START_FLASH=1
+          shot 00-intro-ring 6 SIMCTL_CHILD_BLINK_INTRO_AT=0.5
+          shot 00-intro-word 6 SIMCTL_CHILD_BLINK_INTRO_AT=1.6
+          xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'process == "Blink"' > shots/app.log 2>&1 || true
+          xcrun simctl spawn "$udid" log show --style compact --last 6m --predicate 'subsystem == "app.blink.player"' > shots/blink.log 2>&1 || true
+          echo "итог: приложение живо на всех шагах" | tee shots/report.txt
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.screens
+        with:
+          name: ios-simulator-shots
+          path: native/ios/shots
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.screens
+        with:
+          name: xcodebuild-sim-log
+          path: native/ios/build-sim.log
+          if-no-files-found: ignore
+      # Артефакты Actions скачиваются не из любой среды, поэтому снимки кладём ещё и в релиз (он лежит рядом с ios-alpha).
+      - name: Снимки на странице релизов
+        if: always() && inputs.screens
+        continue-on-error: true
+        working-directory: native/ios
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(shots/*.png shots/report.txt shots/blink.log shots/app.log shots/*.ips)
+          if [ "${#files[@]}" -eq 0 ]; then echo "снимков нет"; exit 0; fi
+          gh release delete ios-screens --cleanup-tag --yes || true
+          gh release create ios-screens "${files[@]}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Blink для iPhone: снимки из симулятора, сборка ${GITHUB_RUN_NUMBER}" \
+            --notes "Экраны приложения в симуляторе iPhone (сборка ${GITHUB_RUN_NUMBER}, коммит ${GITHUB_SHA::7}). Это проверка, не установочный файл."

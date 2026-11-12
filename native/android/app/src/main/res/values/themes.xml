@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Платформенная тёмная тема без AppCompat: весь интерфейс рисует Compose. -->
+    <style name="Theme.Blink" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/blink_ink</item>
+        <item name="android:colorBackground">@color/blink_ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+</resources>
