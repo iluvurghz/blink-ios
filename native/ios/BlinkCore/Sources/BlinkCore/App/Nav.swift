@@ -16,6 +16,8 @@ public enum AppOverlay: Equatable, Sendable {
     case plus
     case library
     case artist
+    case support
+    case cabinet
 }
 
 /// Что открыто внутри экрана «Музыка»: список плейлистов, любимое, плейлист, чужой плейлист по ссылке, подборка редакции.

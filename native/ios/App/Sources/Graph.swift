@@ -55,8 +55,13 @@ final class Graph: ObservableObject {
     let shared: SharedApi
     let artists: ArtistApi
     let importer: Importer
+    let posts: PostsApi
+    let support: SupportApi
+    let cabinet: CabinetApi
+    let lastfm: LastfmApi
     let libraryVersion: LibraryVersion
     let pick = PickState()
+    let info = InfoState()
     private let librarySync: LibrarySync
     private let webAuth = WebAuth()
     private let nowPlaying: NowPlayingBridge
@@ -153,6 +158,10 @@ final class Graph: ObservableObject {
         self.library = library
         self.shared = SharedApi(http: http, config: config, tokens: auth, userId: { auth.session?.userId }, userName: { auth.session?.name ?? auth.session?.email })
         self.importer = Importer(http: http, config: config, api: api)
+        self.posts = PostsApi(http: http, config: config, tokens: auth, api: api, userId: { auth.session?.userId })
+        self.support = SupportApi(http: http, config: config, tokens: auth)
+        self.cabinet = CabinetApi(http: http, uploader: URLSessionUploader(userAgent: agent), config: config, tokens: auth)
+        self.lastfm = LastfmApi(http: http, config: config)
         self.artists = ArtistApi(http: http, config: config, tokens: auth, api: api, userId: { auth.session?.userId })
         self.libraryVersion = LibraryVersion(0) { library.observe($0) }
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })

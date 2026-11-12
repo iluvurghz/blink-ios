@@ -27,6 +27,10 @@ struct AccountView: View {
                 }
                 MusicCard()
                     .padding(.top, 14)
+                ArtistCard()
+                    .padding(.top, 14)
+                HelpCard()
+                    .padding(.top, 14)
                 TogetherCard()
                     .padding(.top, 14)
                 OfflineCard(state: offline.value)
@@ -138,6 +142,34 @@ private struct MusicCard: View {
             T("Любимое, ваши плейлисты и подборки Blink. Всё это синхронизируется с сайтом.", .body, color: Ink.mute)
                 .padding(.top, 6)
             PillButton("Открыть") { graph.nav.openLibrary() }
+                .padding(.top, 14)
+        }
+    }
+}
+
+private struct ArtistCard: View {
+    @EnvironmentObject private var graph: Graph
+
+    var body: some View {
+        Card {
+            T("Для артистов", .h2)
+            T("Загружайте свою музыку, ведите страницу и пишите анонсы подписчикам.", .body, color: Ink.mute)
+                .padding(.top, 6)
+            PillButton("Кабинет артиста", primary: false) { graph.nav.open(.cabinet) }
+                .padding(.top, 14)
+        }
+    }
+}
+
+private struct HelpCard: View {
+    @EnvironmentObject private var graph: Graph
+
+    var body: some View {
+        Card {
+            T("Помощь", .h2)
+            T("Ответы на частые вопросы и связь с командой Blink.", .body, color: Ink.mute)
+                .padding(.top, 6)
+            PillButton("Открыть помощь", primary: false) { graph.nav.open(.support) }
                 .padding(.top, 14)
         }
     }

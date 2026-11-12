@@ -48,6 +48,7 @@ struct PlayerView: View {
                     HStack(spacing: 10) {
                         PillButton("В плейлист", primary: false) { graph.pick.track = track }
                         PillButton("Поделиться", primary: false) { shareTrack(track) }
+                        PillButton("О треке", primary: false) { graph.info.track = track }
                     }
                     .padding(.bottom, 12)
                     SaveChip(

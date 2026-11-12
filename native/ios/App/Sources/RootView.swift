@@ -48,6 +48,8 @@ struct RootView: View {
             }
             PlaylistPicker()
                 .zIndex(2)
+            TrackInfoSheet()
+                .zIndex(2)
         }
         .overlay(alignment: .bottom) {
             ToastHost(bottomPadding: playerOpen ? 96 : chrome + 12)

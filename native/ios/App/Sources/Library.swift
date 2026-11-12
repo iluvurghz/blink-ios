@@ -422,8 +422,12 @@ struct ArtistOverlay: View {
                 }
             }
             .padding(.top, 14)
+            SimilarArtists(name: p.name)
+                .padding(.top, 10)
             ArtistTracks(tracks: p.tracks)
                 .padding(.top, 14)
+            PostsSection(artistId: p.id, own: auth.value?.userId != nil && auth.value?.userId == p.userId, tracks: p.tracks)
+                .padding(.top, 8)
         }
     }
 

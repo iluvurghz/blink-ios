@@ -23,6 +23,10 @@ struct OverlayHost: View {
             LibraryOverlay(bottomInset: bottomInset)
         case .artist:
             ArtistOverlay(bottomInset: bottomInset)
+        case .support:
+            SupportOverlay(bottomInset: bottomInset)
+        case .cabinet:
+            CabinetOverlay(bottomInset: bottomInset)
         }
     }
 }
