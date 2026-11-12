@@ -102,4 +102,34 @@ final class PlaylistsTests: XCTestCase {
         XCTAssertTrue(SharedApi.isShortCode("Xk3p9aQ"))
         XCTAssertFalse(SharedApi.isShortCode("Xk3p9a1"))
     }
+
+    func testArtistApi() async throws {
+        let http = RouteHTTP()
+        let base = "http://127.0.0.1:9"
+        let config = BlinkConfig(baseURL: base, supabaseURL: base, supabaseAnonKey: "anon")
+        http.route("/sb/rest/v1/artists") { req in
+            if (req.url.query ?? "").contains("handle=eq.nick") {
+                return jsonReply(200, #"[{"id":"a1","user_id":"u9","name":"Ник","handle":"nick","bio":"Привет","avatar_url":"https://x/a.jpg","verified":false}]"#)
+            }
+            return jsonReply(200, "[]")
+        }
+        http.route("/sb/rest/v1/lic_tracks") { _ in jsonReply(200, #"[{"id":"11111111-2222-3333-4444-555555555555","title":"Песня","artist_name":"Ник","duration":180,"cover_path":"c"}]"#) }
+        http.route("/sb/rest/v1/rpc/artist_stats") { _ in jsonReply(200, #"[{"followers":"12","likes":5}]"#) }
+        http.route("/sb/rest/v1/follows") { req in
+            req.method == "GET" ? jsonReply(200, #"[{"artist_id":"a1"}]"#) : jsonReply(201, "")
+        }
+        let api = ArtistApi(http: http, config: config, tokens: FixedToken(value: "tok"), api: BlinkApi(http: http, config: config), userId: { "u1" })
+        let a = try await api.profile("nick")
+        XCTAssertEqual(a?.name, "Ник")
+        XCTAssertEqual(a?.followers, 12)
+        XCTAssertEqual(a?.likes, 5)
+        XCTAssertEqual(a?.tracks.map { $0.id }, ["b:11111111-2222-3333-4444-555555555555"])
+        let none = try await api.profile("ghost")
+        XCTAssertNil(none)
+        let following = await api.isFollowing("a1")
+        XCTAssertTrue(following)
+        let ok = await api.setFollow("a1", true)
+        XCTAssertTrue(ok)
+        XCTAssertTrue(http.seen.contains { $0.method == "POST" && $0.url.path == "/sb/rest/v1/follows" })
+    }
 }

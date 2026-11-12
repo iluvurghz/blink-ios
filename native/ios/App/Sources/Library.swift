@@ -325,3 +325,135 @@ struct PlaylistPicker: View {
         pick.track = nil
     }
 }
+
+/// Страница артиста Blink: обложка, подписчики, «Слушать», подписка и треки. Порт ProfilePage сайта (без загрузки треков и постов).
+struct ArtistOverlay: View {
+    @EnvironmentObject private var graph: Graph
+    @EnvironmentObject private var nav: NavStore
+    @EnvironmentObject private var auth: AuthStore
+    let bottomInset: CGFloat
+
+    private enum Phase {
+        case loading, missing, failed
+        case ready(ArtistProfile)
+    }
+
+    @State private var phase = Phase.loading
+    @State private var following = false
+    @State private var followers: Int64 = 0
+    @State private var attempt = 0
+
+    private var key: String { return nav.value.artistKey }
+
+    private var title: String {
+        if case .ready(let p) = phase { return p.name }
+        return "Артист"
+    }
+
+    var body: some View {
+        Sheet(title: title) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, bottomInset)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .task(id: key + "#\(attempt)") {
+            phase = .loading
+            do {
+                if let p = try await graph.artists.profile(key) {
+                    followers = p.followers
+                    phase = .ready(p)
+                    if let me = auth.value?.userId, me != p.userId { following = await graph.artists.isFollowing(p.id) } else { following = false }
+                } else {
+                    phase = .missing
+                }
+            } catch {
+                phase = .failed
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch phase {
+        case .loading:
+            T("Загружаем…", .body, color: Ink.mute)
+        case .missing:
+            T("Такой страницы нет.", .body, color: Ink.mute)
+        case .failed:
+            T("Не получилось загрузить. Проверьте интернет.", .body, color: Ink.mute)
+            PillButton("Повторить", primary: false) { attempt += 1 }
+                .padding(.top, 10)
+        case .ready(let p):
+            HStack(spacing: 16) {
+                Cover(p.avatar ?? "", size: 84, radius: 42)
+                VStack(alignment: .leading, spacing: 2) {
+                    T(p.name + (p.verified ? " ✓" : ""), .h1, lines: 2)
+                    T(([String(followers) + " подп.", Format.tracks(p.tracks.count)] + (p.likes > 0 ? [String(p.likes) + " лайков"] : [])).joined(separator: " · "), .small, color: Ink.mute)
+                }
+            }
+            if let bio = p.bio, !bio.trimmingCharacters(in: .whitespaces).isEmpty {
+                T(bio, .body, color: Ink.mute)
+                    .padding(.top, 12)
+            }
+            HStack(spacing: 8) {
+                PillButton("Слушать", enabled: !p.tracks.isEmpty) { graph.actions.play(p.tracks, at: 0) }
+                if auth.value?.userId != p.userId {
+                    PillButton(following ? "Вы подписаны" : "Подписаться", primary: false) { toggle(p) }
+                }
+            }
+            .padding(.top, 14)
+            ArtistTracks(tracks: p.tracks)
+                .padding(.top, 14)
+        }
+    }
+
+    private func toggle(_ p: ArtistProfile) {
+        if auth.value == nil {
+            graph.toasts.show("Войдите, чтобы подписаться")
+            graph.nav.go(.account)
+            return
+        }
+        let on = !following
+        following = on
+        followers += on ? 1 : -1
+        Task { @MainActor in
+            if await !graph.artists.setFollow(p.id, on) {
+                following = !on
+                followers += on ? -1 : 1
+                graph.toasts.show("Не получилось, попробуйте ещё раз")
+            }
+        }
+    }
+}
+
+private struct ArtistTracks: View {
+    @EnvironmentObject private var graph: Graph
+    @EnvironmentObject private var currentId: CurrentIdStore
+    let tracks: [Track]
+
+    var body: some View {
+        if tracks.isEmpty {
+            T("Пока нет треков.", .body, color: Ink.mute)
+        } else {
+            ForEach(Array(tracks.enumerated()), id: \.offset) { i, t in
+                Button { graph.actions.play(tracks, at: i) } label: {
+                    HStack(spacing: 12) {
+                        Cover(t.artwork, size: 48)
+                        VStack(alignment: .leading, spacing: 0) {
+                            T(t.title, .title, color: currentId.value == t.id ? Ink.accent : Ink.bone, lines: 1)
+                            T(t.artist, .small, color: Ink.mute, lines: 1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(TapStyle())
+            }
+        }
+    }
+}

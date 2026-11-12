@@ -53,6 +53,7 @@ final class Graph: ObservableObject {
     let friendsStore: FriendsStore
     let library: LibraryStore
     let shared: SharedApi
+    let artists: ArtistApi
     let libraryVersion: LibraryVersion
     let pick = PickState()
     private let librarySync: LibrarySync
@@ -150,6 +151,7 @@ final class Graph: ObservableObject {
         )
         self.library = library
         self.shared = SharedApi(http: http, config: config, tokens: auth, userId: { auth.session?.userId }, userName: { auth.session?.name ?? auth.session?.email })
+        self.artists = ArtistApi(http: http, config: config, tokens: auth, api: api, userId: { auth.session?.userId })
         self.libraryVersion = LibraryVersion(0) { library.observe($0) }
         self.librarySync = LibrarySync(http: http, config: config, tokens: auth, library: library, userId: { auth.session?.userId })
         self.flash = FlashController(
@@ -333,7 +335,7 @@ final class Graph: ObservableObject {
         case .track(let ref, let title, let artist)?:
             Task { @MainActor in await self.openSharedTrack(ref: ref, title: title, artist: artist) }
         case .artist(let who)?:
-            if let u = URL(string: "https://blinkmusic.cc/u/" + who) { actions.openURL(u) }
+            nav.openArtist(who)
         default:
             break
         }

@@ -50,27 +50,23 @@ public struct SharedError: Error, Equatable, Sendable {
     public init(_ message: String) { self.message = message }
 }
 
-/// Общие плейлисты (таблицы `shared_playlists`, `editorial_playlists`) и короткие ссылки на треки (`/api/share/track`).
-public final class SharedApi: @unchecked Sendable {
+/// Запросы к PostgREST Supabase с зеркалом на сайте (supabase.co режут операторы). Анонимный ключ или токен пользователя.
+final class SupabaseRest: @unchecked Sendable {
     private let http: HTTPClient
     private let config: BlinkConfig
     private let tokens: TokenProvider?
-    private let userId: @Sendable () -> String?
-    private let userName: @Sendable () -> String?
 
-    public init(http: HTTPClient, config: BlinkConfig, tokens: TokenProvider?, userId: @escaping @Sendable () -> String?, userName: @escaping @Sendable () -> String?) {
+    init(http: HTTPClient, config: BlinkConfig, tokens: TokenProvider?) {
         self.http = http
         self.config = config
         self.tokens = tokens
-        self.userId = userId
-        self.userName = userName
     }
 
     private func roots() -> [String] {
         return config.supabaseMirror == config.supabase ? [config.supabase] : [config.supabaseMirror, config.supabase]
     }
 
-    private func rest(_ path: String, _ query: [(String, String)], method: String = "GET", body: Data? = nil, prefer: String? = nil, auth: Bool = false) async throws -> HTTPResponse {
+    func call(_ path: String, _ query: [(String, String)], method: String = "GET", body: Data? = nil, prefer: String? = nil, auth: Bool = false) async throws -> HTTPResponse {
         var last: Error = SharedError("нет адреса")
         let token = auth ? await tokens?.accessToken() : nil
         for root in roots() {
@@ -85,6 +81,30 @@ public final class SharedApi: @unchecked Sendable {
             }
         }
         throw last
+    }
+
+}
+
+/// Общие плейлисты (таблицы `shared_playlists`, `editorial_playlists`) и короткие ссылки на треки (`/api/share/track`).
+public final class SharedApi: @unchecked Sendable {
+    private let http: HTTPClient
+    private let config: BlinkConfig
+    private let tokens: TokenProvider?
+    private let userId: @Sendable () -> String?
+    private let userName: @Sendable () -> String?
+    private let db: SupabaseRest
+
+    public init(http: HTTPClient, config: BlinkConfig, tokens: TokenProvider?, userId: @escaping @Sendable () -> String?, userName: @escaping @Sendable () -> String?) {
+        self.http = http
+        self.config = config
+        self.tokens = tokens
+        self.userId = userId
+        self.userName = userName
+        self.db = SupabaseRest(http: http, config: config, tokens: tokens)
+    }
+
+    private func rest(_ path: String, _ query: [(String, String)], method: String = "GET", body: Data? = nil, prefer: String? = nil, auth: Bool = false) async throws -> HTTPResponse {
+        return try await db.call(path, query, method: method, body: body, prefer: prefer, auth: auth)
     }
 
     private func tracks(_ v: Any?) -> [Track] {

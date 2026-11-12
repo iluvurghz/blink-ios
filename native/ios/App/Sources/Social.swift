@@ -21,6 +21,8 @@ struct OverlayHost: View {
             PlusSheet(bottomInset: bottomInset)
         case .library:
             LibraryOverlay(bottomInset: bottomInset)
+        case .artist:
+            ArtistOverlay(bottomInset: bottomInset)
         }
     }
 }
