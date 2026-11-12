@@ -284,12 +284,13 @@ def main():
                 time.sleep(8)  # старт воспроизведения онлайн
                 step("05-after-tap-on-track", dump())
                 player_steps()
-                home_steps()
-                intro_steps()
             else:
                 log("строки результатов не нашли, пропускаю шаг с воспроизведением")
         else:
             log("поле поиска не нашли")
+        # главная и заставка снимаются и без найденного трека
+        home_steps()
+        intro_steps()
 
     with open(os.path.join(OUT, "logcat.txt"), "w", encoding="utf-8") as f:
         f.write(adb("logcat", "-d", "-t", "1500", check=False))
