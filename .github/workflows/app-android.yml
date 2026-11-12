@@ -52,7 +52,8 @@ jobs:
         env:
           BLINK_SUPABASE_ANON_KEY: ${{ secrets.BLINK_SUPABASE_ANON_KEY }}
           BLINK_LASTFM_KEY: ${{ secrets.BLINK_LASTFM_KEY }}
-        run: python3 app-tools/site_env.py .env.production.local || echo "::warning::Ключ входа не найден: сборка без входа"
+        run: |
+          python3 app-tools/site_env.py .env.production.local || echo "::warning::Ключ входа не найден, сборка без входа"
       - name: Сайт
         run: npx vite build
       - name: Сайт внутрь приложения
