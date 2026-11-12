@@ -100,7 +100,7 @@ fun BlinkRoot(g: Graph, onDownloadsStarted: () -> Unit = {}, initialQuery: Strin
         PlaylistPicker(g)
         TrackInfoSheet(g)
 
-        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen) 170 else 90)
+        ToastHost(g, bottomPadding = if (player.track != null && !playerOpen && tab != Tab.Flash) 170 else 90)
     }
 }
 
@@ -129,7 +129,8 @@ private fun BoxScope.Chrome(g: Graph, tab: Tab, downloading: Boolean, ui: Player
                 ),
         )
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 18.dp, bottom = 10.dp)) {
-            if (ui.track != null) {
+            // на главной плеер уже есть (большая Вспышка), капсула там не нужна, как на сайте
+            if (ui.track != null && tab != Tab.Flash) {
                 MiniCapsule(g, ui, accent, palette.accentInk.color(), glowA.mix(0.34f, Color(16, 14, 19, 209)))
                 Spacer(Modifier.height(10.dp))
             }

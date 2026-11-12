@@ -1,12 +1,16 @@
 package app.blink.player.ui
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.selected
+import app.blink.core.ui.Hsl
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -16,7 +20,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -75,7 +78,7 @@ fun FlashScreen(g: Graph) {
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 190.dp),
     ) {
-        item(key = "hero") { FlashHero(g) }
+        item(key = "hero") { FlashHero(g, Modifier.fillParentMaxHeight()) }
         item(key = "collection") {
             Spacer(Modifier.height(26.dp))
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
@@ -147,126 +150,274 @@ private fun favouriteArtists(liked: List<Track>): List<Pair<String, List<Track>>
         .take(12)
         .map { it.key to it.value }
 
-/** Большая карточка Вспышки, как «Моя волна», но в стиле Blink: фон из обложки, светящаяся кнопка. */
+/** Яркий вариант цвета палитры для свечения: светлее и насыщеннее, но в том же тоне. */
+private fun Hsl.vivid(l: Double = 0.56, s: Double = 0.85): Hsl = Hsl(h, maxOf(this.s, s).coerceAtMost(1.0), maxOf(this.l, l))
+
+/**
+ * Живой свет за Вспышкой (порт ui/AuraGL.jsx): три больших мягких пятна цветов обложки медленно плывут,
+ * тёплое ядро дышит в такт, к низу и к краям темнеет. Рисуется 30 раз в секунду только пока экран виден.
+ */
 @Composable
-private fun FlashHero(g: Graph) {
+fun FlashAura(palette: app.blink.core.ui.Palette, energy: Float, modifier: Modifier = Modifier) {
+    val c0 by animateColorAsState(palette.accent.vivid(0.58).color(), tween(1500), label = "aura0")
+    val c1 by animateColorAsState(palette.glowB.vivid(0.5).color(), tween(1500), label = "aura1")
+    val c2 by animateColorAsState(palette.glowA.vivid(0.52).color(), tween(1500), label = "aura2")
+    val c3 by animateColorAsState(palette.accent.vivid(0.66, 0.9).color(), tween(1500), label = "aura3")
+    val e by androidx.compose.animation.core.animateFloatAsState(energy, tween(900), label = "energy")
+    var t by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = androidx.compose.runtime.withFrameNanos { it }
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { now -> t = (now - start) / 1e9f }
+            kotlinx.coroutines.delay(30)
+        }
+    }
+    Canvas(modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        drawRect(Brush.verticalGradient(listOf(c1.copy(alpha = 0.10f), c0.copy(alpha = 0.06f)), startY = 0f, endY = h), size = size)
+        // гауссово пятно: exp(-k·d²) в долях ширины, вытянутое по высоте, как в шейдере сайта
+        fun blob(ux: Float, uy: Float, k: Float, c: Color, amp: Float) {
+            val r = kotlin.math.sqrt(4.6f / k) * w
+            val center = Offset(ux * w, uy * h)
+            val a = amp.coerceIn(0f, 1f)
+            scale(1f, h / w * 0.62f, center) {
+                drawCircle(
+                    Brush.radialGradient(
+                        0f to c.copy(alpha = a),
+                        0.25f to c.copy(alpha = a * 0.75f),
+                        0.5f to c.copy(alpha = a * 0.32f),
+                        0.75f to c.copy(alpha = a * 0.075f),
+                        1f to c.copy(alpha = 0f),
+                        center = center,
+                        radius = r,
+                    ),
+                    radius = r,
+                    center = center,
+                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+                )
+            }
+        }
+        val s = t * 0.16f
+        fun sin(x: Float) = kotlin.math.sin(x)
+        fun cos(x: Float) = kotlin.math.cos(x)
+        blob(0.22f + 0.12f * sin(s * 0.9f), 1f - (0.78f + 0.08f * cos(s * 0.7f)), 6f, c0, 0.62f)
+        blob(0.80f + 0.10f * cos(s * 0.8f + 1f), 1f - (0.46f + 0.12f * sin(s * 0.6f)), 6.5f, c1, 0.55f)
+        blob(0.46f + 0.14f * sin(s * 0.5f + 2f), 1f - (0.16f + 0.08f * cos(s * 0.9f + 2f)), 7f, c2, 0.45f)
+        val beat = Math.pow((0.5 + 0.5 * kotlin.math.sin(t * 0.9)), 3.0).toFloat()
+        blob(0.5f, 0.40f, 7f, c3, 0.34f + 0.22f * e + 0.24f * beat * e)
+        blob(0.5f, 0.40f, 3f, c3, 0.12f)
+        // темнее к низу (там кнопки) и к краям
+        drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.4f to Color.Transparent, 0.7f to Color(0x5908070A), 1f to Color(0xC708070A)), size = size)
+        drawRect(Brush.radialGradient(0.5f to Color.Transparent, 1f to Color(0x8C08070A), center = Offset(w / 2, h * 0.45f), radius = maxOf(w, h) * 0.75f), size = size)
+    }
+}
+
+/**
+ * Главный экран Вспышки на всю высоту, как «Моя волна», но в стиле Blink: живой свет цветов обложки,
+ * большое «Вспышка.», светящаяся кнопка. Когда играет: артист крупно, обложка, пауза, плашка трека с ходом и сердце.
+ * Внизу режимы потока пузырями.
+ */
+@Composable
+private fun FlashHero(g: Graph, modifier: Modifier) {
     val active by g.flash.active.collectAsStateWithLifecycle()
     val loading by g.flash.loading.collectAsStateWithLifecycle()
     val mode by g.flash.mode.collectAsStateWithLifecycle()
     val player by g.player.state.collectAsStateWithLifecycle()
     val palette by g.stage.palette.collectAsStateWithLifecycle()
+    val library by g.library.state.collectAsStateWithLifecycle()
     val accent by animateColorAsState(palette.accent.color(), tween(1200), label = "heroAccent")
     val ink = palette.accentInk.color()
-    val track = player.track.takeIf { active }
-    val shape = RoundedCornerShape(30.dp)
-    val drift = rememberInfiniteTransition(label = "drift")
-    val phase by drift.animateFloat(0f, 1f, infiniteRepeatable(tween(9000), RepeatMode.Reverse), label = "phase")
+    val track = player.track
+    val flashing = active && track != null
+    val liked = remember(library, track?.id) { track != null && g.library.isLiked(track.id) }
+    val hint = remember(library) {
+        val names = favouriteArtists(g.library.likes).take(3).map { it.first }
+        if (names.isEmpty()) "Слушайте и ставьте лайки, и поток подстроится под вас" else names.joinToString(", ") + " и похожее на них"
+    }
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-            .aspectRatio(0.78f)
-            .clip(shape)
-            .background(Ink.ink2)
-            .border(1.dp, Color(0x14FFFFFF), shape),
-    ) {
-        if (track != null) {
-            BlurredCover(track.artwork)
-        } else {
-            // Без трека: живые пятна цвета акцента (ps-bg на сайте до первого трека)
-            val a = palette.glowA.color(0.55f)
-            val b = palette.glowB.color(0.45f)
-            val c = palette.glowC.color(0.35f)
-            Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                drawRect(Brush.radialGradient(listOf(a, Color.Transparent), Offset(w * (0.2f + 0.2f * phase), h * 0.3f), w * 0.8f))
-                drawRect(Brush.radialGradient(listOf(b, Color.Transparent), Offset(w * (0.85f - 0.2f * phase), h * (0.55f + 0.1f * phase)), w * 0.75f))
-                drawRect(Brush.radialGradient(listOf(c, Color.Transparent), Offset(w * 0.5f, h * (0.95f - 0.1f * phase)), w * 0.7f))
-                drawRect(Brush.verticalGradient(0f to Color(0x3308070A), 0.6f to Color(0x0008070A), 1f to Color(0xCC08070A)))
-            }
-        }
-
-        Column(Modifier.fillMaxSize().padding(22.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                LineIcon(LineIcons.Bolt, color = accent, dp = 22.dp)
-                Spacer(Modifier.width(8.dp))
-                T("Вспышка", style = Type.h2.copy(fontSize = 18.sp), color = Ink.bone)
-                Spacer(Modifier.weight(1f))
-                if (active) {
-                    T("Стоп", Modifier.clip(CircleShape).background(Color(0x26FFFFFF)).tap { g.flash.stop() }.padding(horizontal = 14.dp, vertical = 7.dp), Type.button.copy(fontSize = 13.sp), Ink.bone)
+    Box(modifier.fillMaxWidth()) {
+        FlashAura(palette, if (player.playing) 1f else 0.35f)
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().padding(top = 10.dp, bottom = 96.dp).navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // сверху: знак Blink, а пока играет Вспышка: плашка режима с крестиком
+            Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
+                if (flashing) {
+                    Row(
+                        Modifier.height(44.dp).clip(CircleShape).background(Color(0x40000000)).border(1.dp, Color(0x1CFFFFFF), CircleShape).padding(start = 18.dp, end = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        T("Вспышка · " + mode.title, style = Type.button.copy(fontSize = 15.sp), color = accent, maxLines = 1)
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            Modifier.size(34.dp).clip(CircleShape).background(accent).semantics { contentDescription = "Остановить Вспышку" }.pressTap { g.flash.stop() },
+                            contentAlignment = Alignment.Center,
+                        ) { LineIcon(LineIcons.Close, color = ink, dp = 16.dp, stroke = 2.4f) }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        T("blink", style = Type.h2.copy(fontSize = 20.sp, letterSpacing = (-0.6).sp), color = Ink.bone)
+                        Box(Modifier.padding(start = 2.dp, bottom = 5.dp).size(6.dp).clip(CircleShape).background(accent))
+                    }
                 }
             }
             Spacer(Modifier.weight(1f))
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (track == null) {
+            if (flashing && track != null) {
+                T(
+                    track.artist,
+                    Modifier.padding(horizontal = 20.dp),
+                    Type.display.copy(fontSize = 40.sp, lineHeight = 42.sp, letterSpacing = (-1.8).sp),
+                    maxLines = 2,
+                    align = TextAlign.Center,
+                )
+                Spacer(Modifier.height(26.dp))
+                var dx by remember { mutableStateOf(0f) }
+                Box(
+                    Modifier
+                        .size(148.dp)
+                        .graphicsLayer { translationX = dx * 0.35f }
+                        .shadow(36.dp, RoundedCornerShape(26.dp), ambientColor = accent, spotColor = accent)
+                        .clip(RoundedCornerShape(26.dp))
+                        .pointerInput(track.id) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (dx < -90f) g.player.next() else if (dx > 90f) g.player.previous()
+                                    dx = 0f
+                                },
+                                onDragCancel = { dx = 0f },
+                            ) { _, d -> dx += d }
+                        }
+                        .semantics { contentDescription = "Открыть плеер" }
+                        .tap { g.nav.openPlayer(true) },
+                ) { NetImage(ArtUrl.scaled(track.artwork, 400), Modifier.fillMaxSize()) }
+                Spacer(Modifier.height(26.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RoundGlass(if (player.playing) LineIcons.Pause else LineIcons.Play, if (player.playing) "Пауза" else "Играть") { g.player.toggle() }
+                    Spacer(Modifier.width(8.dp))
+                    val fraction = if (player.durationMs > 0) (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f) else 0f
                     Box(
                         Modifier
-                            .size(124.dp)
-                            .shadow(40.dp, CircleShape, ambientColor = accent, spotColor = accent)
+                            .weight(1f)
+                            .height(64.dp)
                             .clip(CircleShape)
-                            .background(accent)
-                            .semantics { contentDescription = "Включить Вспышку" }
-                            .pressTap(!loading) { g.flash.start() },
+                            .background(Color(0x33000000))
+                            .drawBehind { drawRect(accent.copy(alpha = 0.3f), size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height)) }
+                            .border(1.dp, Color(0x1AFFFFFF), CircleShape)
+                            .tap { g.nav.openPlayer(true) }
+                            .padding(horizontal = 18.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (loading) Spinner(color = ink, dp = 52.dp) else LineIcon(LineIcons.Play, color = ink, dp = 50.dp)
+                        T(track.title, style = Type.title.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold), maxLines = 1, align = TextAlign.Center)
                     }
-                    Spacer(Modifier.height(22.dp))
-                    T(
-                        if (loading) "Собираю поток…" else "Включить Вспышку",
-                        style = Type.display.copy(fontSize = 26.sp, lineHeight = 30.sp),
-                        align = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    T(
-                        "Бесконечный поток под ваш вкус. Чем больше слушаете и лайкаете, тем точнее.",
-                        Modifier.padding(horizontal = 12.dp),
-                        Type.body,
-                        Ink.bone.copy(alpha = 0.6f),
-                        align = TextAlign.Center,
-                    )
-                } else {
-                    Box(Modifier.size(150.dp).clip(RoundedCornerShape(24.dp)).tap { g.nav.openPlayer(true) }) {
-                        NetImage(ArtUrl.scaled(track.artwork, 400), Modifier.fillMaxSize())
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    T(track.title, style = Type.display.copy(fontSize = 24.sp, lineHeight = 28.sp), maxLines = 2, align = TextAlign.Center)
-                    Spacer(Modifier.height(4.dp))
-                    T(track.artist, style = Type.title.copy(fontWeight = FontWeight.SemiBold), color = Ink.bone.copy(alpha = 0.62f), maxLines = 1, align = TextAlign.Center)
-                    Spacer(Modifier.height(18.dp))
-                    val library by g.library.state.collectAsStateWithLifecycle()
-                    val liked = remember(library, track.id) { g.library.isLiked(track.id) }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        StageIcon(LineIcons.ThumbDown, "Не моё", { g.flash.dislike(track) }, dp = 24.dp, box = 52.dp, color = Ink.bone.copy(alpha = 0.8f))
-                        PlayIris(player.playing, player.buffering, 72.dp, accent, ink, glow = true) { g.player.toggle() }
-                        StageIcon(LineIcons.Next, "Следующий", { g.player.next() }, dp = 26.dp, box = 52.dp)
-                        StageIcon(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", { g.flash.toggleLike(track) }, dp = 24.dp, box = 52.dp, on = liked, accent = accent)
-                    }
+                    Spacer(Modifier.width(8.dp))
+                    RoundGlass(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", on = liked, accent = accent) { g.flash.toggleLike(track) }
                 }
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    QuietAction(LineIcons.ThumbDown, "Не моё") { g.flash.dislike(track) }
+                    QuietAction(LineIcons.Next, "Дальше") { g.player.next() }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    T("Вспышка", style = Type.display.copy(fontSize = 56.sp, lineHeight = 56.sp, letterSpacing = (-3).sp), color = Ink.bone, maxLines = 1)
+                    Box(Modifier.padding(start = 4.dp, bottom = 9.dp).size(10.dp).clip(CircleShape).background(accent))
+                }
+                Spacer(Modifier.height(26.dp))
+                Box(
+                    Modifier
+                        .size(112.dp)
+                        .shadow(44.dp, CircleShape, ambientColor = accent, spotColor = accent)
+                        .clip(CircleShape)
+                        .background(accent)
+                        .semantics { contentDescription = "Включить Вспышку" }
+                        .pressTap(!loading) { g.flash.start() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (loading) Spinner(color = ink, dp = 48.dp) else LineIcon(LineIcons.Play, color = ink, dp = 46.dp, stroke = 2.2f)
+                }
+                Spacer(Modifier.height(26.dp))
+                if (track != null) {
+                    Row(
+                        Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(60.dp).clip(CircleShape).background(Color(0x40000000)).border(1.dp, Color(0x1AFFFFFF), CircleShape)
+                            .tap { g.nav.openPlayer(true) }.padding(start = 22.dp, end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        T("${track.artist} — ${track.title}", Modifier.weight(1f), Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp), maxLines = 1, align = TextAlign.Center)
+                        StageIcon(if (liked) LineIcons.HeartFill else LineIcons.Heart, "Любимое", { g.flash.toggleLike(track) }, dp = 24.dp, box = 48.dp, on = liked, accent = accent)
+                    }
+                    Spacer(Modifier.height(18.dp))
+                }
+                T(
+                    if (loading) "Подбираю музыку…" else hint,
+                    Modifier.padding(horizontal = 36.dp),
+                    Type.body.copy(fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold),
+                    Ink.bone.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    align = TextAlign.Center,
+                )
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (m in WaveMode.entries) ModeChip(m.title, m == mode, accent) { g.flash.setMode(m) }
+            ModeBubbles(palette, mode) { m ->
+                g.flash.setMode(m)
+                if (!active && !loading) g.flash.start()
             }
         }
     }
 }
 
 @Composable
-private fun ModeChip(label: String, selected: Boolean, accent: Color, onClick: () -> Unit) {
+private fun RoundGlass(icon: LineIcons, label: String, on: Boolean = false, accent: Color = Ink.accent, onClick: () -> Unit) {
     Box(
-        Modifier
-            .clip(CircleShape)
-            .background(if (selected) accent.copy(alpha = 0.22f) else Color(0x1FFFFFFF))
-            .border(1.dp, if (selected) accent.copy(alpha = 0.5f) else Color.Transparent, CircleShape)
-            .semantics { contentDescription = "Режим $label" }
-            .tap(onClick = onClick)
-            .padding(horizontal = 15.dp, vertical = 9.dp),
+        Modifier.size(64.dp).clip(CircleShape).background(Color(0x33000000)).border(1.dp, Color(0x1AFFFFFF), CircleShape)
+            .semantics { contentDescription = label }.pressTap(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { LineIcon(icon, color = if (on) accent else Ink.bone, dp = 26.dp) }
+}
+
+@Composable
+private fun QuietAction(icon: LineIcons, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(CircleShape).semantics { contentDescription = label }.pressTap(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        T(label, style = Type.button.copy(fontSize = 13.sp), color = if (selected) accent else Ink.bone.copy(alpha = 0.75f), maxLines = 1)
+        LineIcon(icon, color = Ink.bone.copy(alpha = 0.7f), dp = 18.dp)
+        Spacer(Modifier.width(6.dp))
+        T(label, style = Type.button.copy(fontSize = 13.sp), color = Ink.bone.copy(alpha = 0.7f), maxLines = 1)
+    }
+}
+
+/** Режимы потока пузырями внизу экрана: у каждого свой цвет из палитры, выбранный ярче и с точкой. */
+@Composable
+private fun ModeBubbles(palette: app.blink.core.ui.Palette, mode: WaveMode, onPick: (WaveMode) -> Unit) {
+    val hues = listOf(palette.accent, palette.glowB, palette.glowA, palette.glowC)
+    val icons = listOf(LineIcons.Bolt, LineIcons.Heart, LineIcons.Search, LineIcons.Plus)
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        WaveMode.entries.forEachIndexed { i, m ->
+            val on = m == mode
+            val c = hues[i % hues.size].vivid(0.5).color()
+            val shape = RoundedCornerShape(topStartPercent = 50, topEndPercent = 50, bottomStartPercent = 22, bottomEndPercent = 22)
+            Column(
+                Modifier
+                    .width(118.dp)
+                    .height(112.dp)
+                    .clip(shape)
+                    .background(Brush.verticalGradient(listOf(c.copy(alpha = if (on) 0.95f else 0.55f), c.copy(alpha = if (on) 0.35f else 0.12f))))
+                    .border(if (on) 1.5.dp else 1.dp, if (on) Color(0x66FFFFFF) else Color(0x14FFFFFF), shape)
+                    .semantics { contentDescription = "Режим ${m.title}"; selected = on }
+                    .pressTap { onPick(m) }
+                    .padding(top = 24.dp, bottom = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                LineIcon(icons[i % icons.size], color = Ink.bone.copy(alpha = if (on) 1f else 0.75f), dp = 24.dp)
+                Spacer(Modifier.weight(1f))
+                T(m.title, style = Type.button.copy(fontSize = 14.sp), color = Ink.bone.copy(alpha = if (on) 1f else 0.8f), maxLines = 1)
+            }
+        }
     }
 }
 
