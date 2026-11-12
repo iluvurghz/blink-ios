@@ -163,6 +163,24 @@ class StageModel(
         }
     }
 
+    private val artistPhotos = HashMap<String, String?>()
+
+    /** Фото артиста для полки «Любимые артисты»: Deezer по имени, с кэшем на сеанс. */
+    suspend fun artistPhoto(t: Track): String? {
+        synchronized(artistPhotos) { if (artistPhotos.containsKey(t.artist)) return artistPhotos[t.artist] }
+        val u = withContext(Dispatchers.IO) {
+            try {
+                photos.photo(t)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+        }
+        synchronized(artistPhotos) { artistPhotos[t.artist] = u }
+        return u
+    }
+
     fun retry() {
         track?.let { loadLyrics(it) }
     }

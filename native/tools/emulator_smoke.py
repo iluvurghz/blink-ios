@@ -200,6 +200,28 @@ def player_steps():
     step("10-mini", dump())
 
 
+def home_steps():
+    """Главная: большая Вспышка, коллекция, шапка «Мне нравится», запуск Вспышки."""
+    if not tap_label("Вспышка", 5):
+        return
+    time.sleep(3)
+    step("11-home", dump())
+    w, h = screen_size()
+    adb("shell", "input", "swipe", str(w // 2), str(int(h * 0.75)), str(w // 2), str(int(h * 0.3)), "400")
+    time.sleep(2)
+    step("12-collection", dump())
+    if tap_label("Мне нравится"):
+        time.sleep(3)
+        step("13-likes", dump())
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        time.sleep(2)
+    adb("shell", "input", "swipe", str(w // 2), str(int(h * 0.3)), str(w // 2), str(int(h * 0.8)), "300")
+    time.sleep(1)
+    if tap_label("Включить Вспышку", 5):
+        time.sleep(15)
+        step("14-flash-on", dump())
+
+
 def main():
     apks = sorted(glob.glob("apk/*.apk"))
     if not apks:
@@ -252,6 +274,7 @@ def main():
                 time.sleep(8)  # старт воспроизведения онлайн
                 step("05-after-tap-on-track", dump())
                 player_steps()
+                home_steps()
             else:
                 log("строки результатов не нашли, пропускаю шаг с воспроизведением")
         else:

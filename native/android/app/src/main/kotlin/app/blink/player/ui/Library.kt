@@ -26,6 +26,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,12 +62,80 @@ fun LibraryScreen(g: Graph) {
     Sheet(g, title) {
         when (val r = route) {
             LibRoute.Home -> LibraryHome(g)
-            LibRoute.Likes -> TrackList(g, remember(lib) { g.library.likes }, emptyText = "Нажмите сердечко у трека, и он появится здесь.", onRemove = { t -> g.library.toggleLike(t) })
+            LibRoute.Likes -> LikesPage(g)
             is LibRoute.Mine -> MyPlaylist(g, r.id)
             is LibRoute.Shared -> RemotePlaylist(g, key = "s" + r.code, load = { g.shared.fetchShared(r.code) }, mine = false)
             is LibRoute.Editorial -> RemotePlaylist(g, key = "e" + r.id, load = { g.shared.editorialOne(r.id) }, mine = false)
             LibRoute.Import -> ImportPanel(g)
         }
+    }
+}
+
+@Composable
+private fun LikesPage(g: Graph) {
+    val lib by g.library.state.collectAsStateWithLifecycle()
+    val likes = remember(lib) { g.library.likes }
+    PlaylistHeader(g, likes, "Мне нравится", Format.tracks(likes.size), cover = null)
+    TrackList(g, likes, emptyText = "Нажмите сердечко у трека, и он появится здесь.", onRemove = { t -> g.library.toggleLike(t) })
+}
+
+/**
+ * Шапка плейлиста: большая обложка (у «Мне нравится» сердце на цвете акцента), название,
+ * число треков и две главные кнопки: «Слушать» и «Скачать».
+ */
+@Composable
+private fun PlaylistHeader(g: Graph, tracks: List<Track>, name: String, sub: String, cover: String?, owner: String = "") {
+    val palette by g.stage.palette.collectAsStateWithLifecycle()
+    val accent = palette.accent.color()
+    val ink = palette.accentInk.color()
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        val shape = RoundedCornerShape(26.dp)
+        Box(
+            Modifier
+                .size(208.dp)
+                .shadow(30.dp, shape, ambientColor = accent, spotColor = accent)
+                .clip(shape)
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(accent, palette.glowB.color(), Ink.ink3))),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (cover == null) {
+                LineIcon(LineIcons.HeartFill, color = Ink.bone, dp = 84.dp)
+            } else {
+                NetImage(app.blink.core.ui.ArtUrl.scaled(cover, 500), Modifier.fillMaxSize())
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        T(name, style = Type.display, maxLines = 2, align = androidx.compose.ui.text.style.TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        T(if (owner.isNotEmpty()) "$sub · от $owner" else sub, style = Type.body, color = Ink.mute, maxLines = 1)
+        Spacer(Modifier.height(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            HeaderButton(LineIcons.Download, "Скачать", Color(0x1AFFFFFF), Ink.bone, tracks.isNotEmpty()) { g.actions.saveAll(tracks) }
+            HeaderButton(LineIcons.Play, "Слушать", accent, ink, tracks.isNotEmpty()) { g.actions.play(tracks, 0) }
+            HeaderButton(LineIcons.Shuffle, "Вперемешку", Color(0x1AFFFFFF), Ink.bone, tracks.size > 1) {
+                g.actions.play(tracks.shuffled(), 0)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun HeaderButton(icon: LineIcons, label: String, bg: Color, fg: Color, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .height(48.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .semantics { contentDescription = label }
+            .pressTap(enabled, onClick)
+            .padding(horizontal = 18.dp)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.4f },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LineIcon(icon, color = fg, dp = 20.dp)
+        Spacer(Modifier.width(8.dp))
+        T(label, style = Type.button, color = fg, maxLines = 1)
     }
 }
 
@@ -157,12 +231,8 @@ private fun MyPlaylist(g: Graph, id: String) {
         T("Такого плейлиста нет.", style = Type.body, color = Ink.mute)
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PillButton("Играть", { g.actions.play(p.tracks, 0) }, enabled = p.tracks.isNotEmpty())
-        PillButton("Сохранить офлайн", { g.actions.saveAll(p.tracks) }, primary = false, enabled = p.tracks.isNotEmpty())
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    PlaylistHeader(g, p.tracks, p.name, Format.tracks(p.tracks.size), cover = p.cover ?: p.tracks.firstOrNull()?.artwork.orEmpty())
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         PillButton("Поделиться", {
             scope.launch {
                 try {
@@ -202,11 +272,8 @@ private fun RemotePlaylist(g: Graph, key: String, load: suspend () -> SharedPlay
         Missing -> T("Плейлист закрыт или ссылка устарела.", style = Type.body, color = Ink.mute)
         Failed -> T("Не получилось загрузить. Проверьте интернет.", style = Type.body, color = Ink.mute)
         is SharedPlaylist -> {
-            T(s.name, style = Type.h1, maxLines = 2)
-            if (s.owner.isNotEmpty()) T("от " + s.owner, style = Type.small, color = Ink.mute)
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("Играть", { g.actions.play(s.tracks, 0) }, enabled = s.tracks.isNotEmpty())
+            PlaylistHeader(g, s.tracks, s.name, Format.tracks(s.tracks.size), cover = s.tracks.firstOrNull()?.artwork.orEmpty(), owner = s.owner)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 PillButton("Сохранить себе", {
                     g.library.createPlaylist(s.name, s.tracks)
                     g.toasts.show("Плейлист добавлен в ваши")
