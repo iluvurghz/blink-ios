@@ -30,7 +30,7 @@ struct RootView: View {
 
         ZStack(alignment: .bottom) {
             Ink.ink.ignoresSafeArea()
-            FlashView(bottomInset: chrome + 12)
+            FlashView(bottomInset: Chrome.height(hasTrack: false) + 12)
                 .screen(tab == .flash)
             SearchView(active: tab == .search, bottomInset: chrome + 12)
                 .screen(tab == .search)
@@ -40,7 +40,8 @@ struct RootView: View {
                 .screen(tab == .account)
             OverlayHost(overlay: nav.value.overlay, bottomInset: chrome + 12)
                 .zIndex(0.5)
-            ChromeView(withTrack: withTrack)
+            // на главной плеер уже есть (большая Вспышка), капсула там не нужна, как на сайте
+            ChromeView(withTrack: withTrack && tab != .flash)
             if playerOpen {
                 PlayerView(onClose: { graph.nav.openPlayer(false) })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -52,7 +53,7 @@ struct RootView: View {
                 .zIndex(2)
         }
         .overlay(alignment: .bottom) {
-            ToastHost(bottomPadding: playerOpen ? 96 : chrome + 12)
+            ToastHost(bottomPadding: playerOpen ? 96 : (tab == .flash ? Chrome.height(hasTrack: false) : chrome) + 12)
         }
         .environment(\.stageAccent, stage.palette.accent.color)
         .animation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.38), value: playerOpen)

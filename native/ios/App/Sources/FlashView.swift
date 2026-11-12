@@ -17,10 +17,12 @@ struct FlashView: View {
         let liked = flash.likes
         let playlists = graph.library.playlists
         let artists = FlashView.favouriteArtists(liked)
-        return ScrollViewReader { proxy in
+        return GeometryReader { geo in
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                FlashHero()
+                FlashHero(top: geo.safeAreaInsets.top, bottom: Chrome.dock + Chrome.gap * 2 + 14)
+                    .frame(height: geo.size.height + geo.safeAreaInsets.top)
                 HStack(alignment: .lastTextBaseline) {
                     T("Коллекция", .h1)
                     Spacer(minLength: 0)
@@ -83,6 +85,8 @@ struct FlashView: View {
             proxy.scrollTo(anchor, anchor: .top)
         }
         }
+        .ignoresSafeArea(edges: .top)
+        }
     }
 
     struct FavArtist {
@@ -109,153 +113,308 @@ struct FlashView: View {
     }
 }
 
-/// Большая карточка Вспышки: фон из обложки или живые пятна цвета акцента, светящаяся кнопка, режимы.
+private extension Hsl {
+    /// Яркий вариант цвета палитры для свечения: светлее и насыщеннее, в том же тоне.
+    func vivid(_ l: Double = 0.56, _ s: Double = 0.85) -> Hsl {
+        return Hsl(h, min(1, max(self.s, s)), max(self.l, l))
+    }
+}
+
+/// Живой свет за Вспышкой (порт ui/AuraGL.jsx): три мягких пятна цветов обложки плывут, тёплое ядро дышит,
+/// к низу и краям темнеет. 30 кадров в секунду.
+struct FlashAura: View {
+    let palette: Palette
+    let energy: Double
+
+    var body: some View {
+        let c0 = palette.accent.vivid(0.58).color
+        let c1 = palette.glowB.vivid(0.5).color
+        let c2 = palette.glowA.vivid(0.52).color
+        let c3 = palette.accent.vivid(0.66, 0.9).color
+        return TimelineView(.animation(minimumInterval: 1.0 / 30)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000)
+            Canvas { g, size in
+                let w = size.width
+                let h = size.height
+                g.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(Gradient(colors: [c1.opacity(0.10), c0.opacity(0.06)]), startPoint: .zero, endPoint: CGPoint(x: 0, y: h)))
+                func blob(_ ux: Double, _ uy: Double, _ k: Double, _ c: Color, _ amp: Double) {
+                    let r = (4.6 / k).squareRoot() * w
+                    let a = min(1, max(0, amp))
+                    let center = CGPoint(x: ux * w, y: uy * h)
+                    var layer = g
+                    layer.blendMode = .plusLighter
+                    layer.translateBy(x: center.x, y: center.y)
+                    layer.scaleBy(x: 1, y: h / w * 0.62)
+                    let grad = Gradient(stops: [
+                        .init(color: c.opacity(a), location: 0),
+                        .init(color: c.opacity(a * 0.75), location: 0.25),
+                        .init(color: c.opacity(a * 0.32), location: 0.5),
+                        .init(color: c.opacity(a * 0.075), location: 0.75),
+                        .init(color: c.opacity(0), location: 1),
+                    ])
+                    layer.fill(Path(ellipseIn: CGRect(x: -r, y: -r, width: r * 2, height: r * 2)), with: .radialGradient(grad, center: .zero, startRadius: 0, endRadius: r))
+                }
+                let s = t * 0.16
+                blob(0.22 + 0.12 * sin(s * 0.9), 1 - (0.78 + 0.08 * cos(s * 0.7)), 6, c0, 0.62)
+                blob(0.80 + 0.10 * cos(s * 0.8 + 1), 1 - (0.46 + 0.12 * sin(s * 0.6)), 6.5, c1, 0.55)
+                blob(0.46 + 0.14 * sin(s * 0.5 + 2), 1 - (0.16 + 0.08 * cos(s * 0.9 + 2)), 7, c2, 0.45)
+                let beat = pow(0.5 + 0.5 * sin(t * 0.9), 3)
+                blob(0.5, 0.40, 7, c3, 0.34 + 0.22 * energy + 0.24 * beat * energy)
+                blob(0.5, 0.40, 3, c3, 0.12)
+                let dark = Color(hex: 0x08070A)
+                g.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(Gradient(stops: [
+                    .init(color: .clear, location: 0), .init(color: .clear, location: 0.4),
+                    .init(color: dark.opacity(0.35), location: 0.7), .init(color: dark.opacity(0.78), location: 1),
+                ]), startPoint: .zero, endPoint: CGPoint(x: 0, y: h)))
+                g.fill(Path(CGRect(origin: .zero, size: size)), with: .radialGradient(Gradient(stops: [
+                    .init(color: .clear, location: 0.5), .init(color: dark.opacity(0.55), location: 1),
+                ]), center: CGPoint(x: w / 2, y: h * 0.45), startRadius: 0, endRadius: max(w, h) * 0.75))
+            }
+        }
+        .animation(.easeOut(duration: 1.5), value: palette)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Главный экран Вспышки на всю высоту, как «Моя волна», но в стиле Blink: живой свет цветов обложки,
+/// большое «Вспышка.», светящаяся кнопка. Когда играет: артист крупно, обложка, пауза, плашка трека и сердце.
 private struct FlashHero: View {
     @EnvironmentObject private var graph: Graph
     @EnvironmentObject private var flash: FlashController
     @EnvironmentObject private var player: PlayerStore
     @EnvironmentObject private var stage: StageModel
-    @State private var drift = false
+    let top: CGFloat
+    let bottom: CGFloat
+    @State private var dx: CGFloat = 0
 
     var body: some View {
         let ui = player.value
-        let accent = stage.palette.accent.color
-        let ink = stage.palette.accentInk.color
-        let track = flash.active ? ui.track : nil
-        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
-        return ZStack {
-            Ink.ink2
-            if let t = track {
-                BlurredCover(url: t.artwork)
-            } else {
-                blobs
-            }
-            VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    LineIconView(.bolt, color: accent, size: 22)
-                    T("Вспышка", BType.h2.sized(18))
-                    Spacer(minLength: 0)
-                    if flash.active {
-                        Button { flash.stop() } label: {
-                            T("Стоп", BType.button.sized(13))
-                                .padding(.horizontal, 14).padding(.vertical, 7)
-                                .background(Capsule().fill(Color.white.opacity(0.15)))
-                        }
-                        .buttonStyle(PressScale())
-                    }
-                }
-                Spacer(minLength: 0)
-                if let t = track {
-                    playing(t, ui: ui, accent: accent, ink: ink)
-                } else {
-                    idle(accent: accent, ink: ink)
-                }
-                Spacer(minLength: 0)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(WaveMode.allCases, id: \.rawValue) { m in
-                            ModeChip(label: m.title, selected: m == flash.mode, accent: accent) { flash.setMode(m) }
-                        }
-                    }
-                }
-            }
-            .padding(22)
-        }
-        .aspectRatio(0.78, contentMode: .fit)
-        .clipShape(shape)
-        .overlay(shape.stroke(Color.white.opacity(0.08), lineWidth: 1))
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .onAppear { withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true } }
-    }
-
-    private var blobs: some View {
         let p = stage.palette
-        let k: CGFloat = drift ? 1 : 0
-        return GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            ZStack {
-                RadialGradient(colors: [p.glowA.color.opacity(0.55), .clear], center: UnitPoint(x: 0.2 + 0.2 * k, y: 0.3), startRadius: 0, endRadius: w * 0.8)
-                RadialGradient(colors: [p.glowB.color.opacity(0.45), .clear], center: UnitPoint(x: 0.85 - 0.2 * k, y: 0.55 + 0.1 * k), startRadius: 0, endRadius: w * 0.75)
-                RadialGradient(colors: [p.glowC.color.opacity(0.35), .clear], center: UnitPoint(x: 0.5, y: 0.95 - 0.1 * k), startRadius: 0, endRadius: w * 0.7)
-                LinearGradient(stops: [
-                    .init(color: Color(hex: 0x08070A).opacity(0.2), location: 0),
-                    .init(color: .clear, location: 0.6),
-                    .init(color: Color(hex: 0x08070A).opacity(0.8), location: 1),
-                ], startPoint: .top, endPoint: .bottom)
+        let accent = p.accent.color
+        let ink = p.accentInk.color
+        let flashing = flash.active && ui.track != nil
+        return ZStack {
+            Color(hex: 0x0B0A0D)
+            FlashAura(palette: p, energy: ui.playing ? 1 : 0.35)
+            VStack(spacing: 0) {
+                header(flashing: flashing, accent: accent, ink: ink)
+                    .frame(height: 48)
+                Spacer(minLength: 8)
+                if flashing, let t = ui.track {
+                    playing(t, ui: ui, accent: accent)
+                } else {
+                    rest(ui.track, accent: accent, ink: ink)
+                }
+                Spacer(minLength: 8)
+                ModeBubbles(palette: p, mode: flash.mode) { m in
+                    flash.setMode(m)
+                    if !flash.active && !flash.loading { flash.start() }
+                }
             }
-            .frame(width: w, height: h)
+            .padding(.top, top + 10)
+            .padding(.bottom, bottom)
         }
     }
 
-    private func idle(accent: Color, ink: Color) -> some View {
-        VStack(spacing: 0) {
+    @ViewBuilder
+    private func header(flashing: Bool, accent: Color, ink: Color) -> some View {
+        if flashing {
+            HStack(spacing: 8) {
+                T("Вспышка · " + flash.mode.title, BType.button.sized(15), color: accent, lines: 1)
+                Button { flash.stop() } label: {
+                    LineIconView(.close, color: ink, size: 16, stroke: 2.4)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(accent))
+                }
+                .buttonStyle(PressScale())
+                .accessibilityLabel("Остановить Вспышку")
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 5)
+            .frame(height: 44)
+            .background(Capsule().fill(Color.black.opacity(0.25)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.11), lineWidth: 1))
+        } else {
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                T("blink", BType.h2.sized(20, tracking: -0.6))
+                Circle().fill(accent).frame(width: 6, height: 6)
+            }
+        }
+    }
+
+    private func rest(_ track: Track?, accent: Color, ink: Color) -> some View {
+        let hint: String = {
+            let names = FlashView.favouriteArtists(flash.likes).prefix(3).map { $0.name }
+            return names.isEmpty ? "Слушайте и ставьте лайки, и поток подстроится под вас" : names.joined(separator: ", ") + " и похожее на них"
+        }()
+        return VStack(spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                T("Вспышка", BType.display.sized(56, tracking: -3), lines: 1)
+                Circle().fill(accent).frame(width: 10, height: 10)
+            }
             Button { flash.start() } label: {
                 ZStack {
-                    Circle().fill(accent).frame(width: 124, height: 124)
-                        .shadow(color: accent.opacity(0.6), radius: 30)
+                    Circle().fill(accent).frame(width: 112, height: 112)
+                        .shadow(color: accent.opacity(0.65), radius: 36)
                     if flash.loading {
-                        Spinner(color: ink, size: 52)
+                        Spinner(color: ink, size: 48)
                     } else {
-                        LineIconView(.play, color: ink, size: 50)
+                        LineIconView(.play, color: ink, size: 46, stroke: 2.2)
                     }
                 }
             }
             .buttonStyle(PressScale())
             .disabled(flash.loading)
             .accessibilityLabel("Включить Вспышку")
-            T(flash.loading ? "Собираю поток…" : "Включить Вспышку", BType.display.sized(26), align: .center)
-                .padding(.top, 22)
-            T("Бесконечный поток под ваш вкус. Чем больше слушаете и лайкаете, тем точнее.", .body, color: Ink.bone.opacity(0.6), align: .center)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+            .padding(.top, 26)
+            if let t = track {
+                let liked = flash.isLiked(t)
+                HStack(spacing: 0) {
+                    Button { graph.nav.openPlayer(true) } label: {
+                        T("\(t.artist) — \(t.title)", BType.title.sized(16), lines: 1, align: .center)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(TapStyle())
+                    StageIcon(liked ? .heartFill : .heart, "Любимое", size: 24, box: 48, on: liked) { flash.toggleLike(t) }
+                }
+                .padding(.leading, 22)
+                .padding(.trailing, 6)
+                .frame(height: 60)
+                .background(Capsule().fill(Color.black.opacity(0.25)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                .padding(.horizontal, 24)
+                .padding(.top, 26)
+            }
+            T(flash.loading ? "Подбираю музыку…" : hint, BType.body.sized(16), color: Ink.bone.opacity(0.85), lines: 2, align: .center)
+                .padding(.horizontal, 36)
+                .padding(.top, track == nil ? 26 : 18)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func playing(_ t: Track, ui: PlayerUi, accent: Color, ink: Color) -> some View {
+    private func playing(_ t: Track, ui: PlayerUi, accent: Color) -> some View {
         let liked = flash.isLiked(t)
+        let fraction = ui.durationMs > 0 ? min(1, max(0, Double(ui.positionMs) / Double(ui.durationMs))) : 0
         return VStack(spacing: 0) {
+            T(t.artist, BType.display.sized(40, tracking: -1.8), lines: 2, align: .center)
+                .padding(.horizontal, 20)
             Button { graph.nav.openPlayer(true) } label: {
                 NetImage(url: ArtUrl.scaled(t.artwork, 400))
-                    .frame(width: 150, height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .frame(width: 148, height: 148)
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .shadow(color: accent.opacity(0.5), radius: 30)
             }
             .buttonStyle(PressScale())
-            T(t.title, BType.display.sized(24), lines: 2, align: .center)
-                .padding(.top, 18)
-            T(t.artist, .title, color: Ink.bone.opacity(0.62), lines: 1, align: .center)
-                .padding(.top, 4)
-            HStack(spacing: 10) {
-                StageIcon(.thumbDown, "Не моё", size: 24, box: 52, color: Ink.bone.opacity(0.8)) { flash.dislike(t) }
-                PlayIris(playing: ui.playing, buffering: ui.buffering, size: 72, accent: accent, ink: ink, glow: true) { graph.player.toggle() }
-                StageIcon(.next, "Следующий", size: 26, box: 52) { graph.player.next() }
-                StageIcon(liked ? .heartFill : .heart, "Любимое", size: 24, box: 52, on: liked) { flash.toggleLike(t) }
+            .offset(x: dx * 0.35)
+            .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { dx = $0.translation.width }.onEnded { v in
+                if v.translation.width < -90 { graph.player.next() } else if v.translation.width > 90 { graph.player.previous() }
+                withAnimation(.easeOut(duration: 0.2)) { dx = 0 }
+            })
+            .accessibilityLabel("Открыть плеер")
+            .padding(.top, 26)
+            HStack(spacing: 8) {
+                RoundGlass(icon: ui.playing ? .pause : .play, label: ui.playing ? "Пауза" : "Играть") { graph.player.toggle() }
+                Button { graph.nav.openPlayer(true) } label: {
+                    T(t.title, BType.title.sized(17), lines: 1, align: .center)
+                        .padding(.horizontal, 18)
+                        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 64)
+                        .background(
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Color.black.opacity(0.2)
+                                    accent.opacity(0.3).frame(width: g.size.width * fraction)
+                                }
+                            }
+                        )
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                }
+                .buttonStyle(TapStyle())
+                RoundGlass(icon: liked ? .heartFill : .heart, label: "Любимое", on: liked, accent: accent) { flash.toggleLike(t) }
             }
-            .padding(.top, 18)
+            .padding(.horizontal, 16)
+            .padding(.top, 26)
+            HStack(spacing: 18) {
+                QuietAction(icon: .thumbDown, label: "Не моё") { flash.dislike(t) }
+                QuietAction(icon: .next, label: "Дальше") { graph.player.next() }
+            }
+            .padding(.top, 14)
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
-private struct ModeChip: View {
+private struct RoundGlass: View {
+    let icon: LineIcon
     let label: String
-    let selected: Bool
-    let accent: Color
+    var on: Bool = false
+    var accent: Color = Ink.accent
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            T(label, BType.button.sized(13), color: selected ? accent : Ink.bone.opacity(0.75), lines: 1)
-                .padding(.horizontal, 15)
-                .padding(.vertical, 9)
-                .background(Capsule().fill(selected ? accent.opacity(0.22) : Color.white.opacity(0.12)))
-                .overlay(Capsule().stroke(selected ? accent.opacity(0.5) : .clear, lineWidth: 1))
+            LineIconView(icon, color: on ? accent : Ink.bone, size: 26)
+                .frame(width: 64, height: 64)
+                .background(Circle().fill(Color.black.opacity(0.2)))
+                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .buttonStyle(PressScale())
-        .accessibilityLabel("Режим \(label)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityLabel(label)
+    }
+}
+
+private struct QuietAction: View {
+    let icon: LineIcon
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                LineIconView(icon, color: Ink.bone.opacity(0.7), size: 18)
+                T(label, BType.button.sized(13), color: Ink.bone.opacity(0.7), lines: 1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(PressScale())
+        .accessibilityLabel(label)
+    }
+}
+
+/// Режимы потока пузырями внизу экрана: у каждого свой цвет из палитры, выбранный ярче.
+private struct ModeBubbles: View {
+    let palette: Palette
+    let mode: WaveMode
+    let pick: (WaveMode) -> Void
+
+    var body: some View {
+        let hues = [palette.accent, palette.glowB, palette.glowA, palette.glowC]
+        let icons: [LineIcon] = [.bolt, .heart, .search, .plus]
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(Array(WaveMode.allCases.enumerated()), id: \.element.rawValue) { i, m in
+                    let on = m == mode
+                    let c = hues[i % hues.count].vivid(0.5).color
+                    let shape = UnevenRoundedRectangle(topLeadingRadius: 59, bottomLeadingRadius: 24, bottomTrailingRadius: 24, topTrailingRadius: 59, style: .continuous)
+                    Button { pick(m) } label: {
+                        VStack(spacing: 0) {
+                            LineIconView(icons[i % icons.count], color: Ink.bone.opacity(on ? 1 : 0.75), size: 24)
+                            Spacer(minLength: 0)
+                            T(m.title, BType.button.sized(14), color: Ink.bone.opacity(on ? 1 : 0.8), lines: 1)
+                        }
+                        .padding(.top, 24)
+                        .padding(.bottom, 14)
+                        .frame(width: 118, height: 112)
+                        .background(shape.fill(LinearGradient(colors: [c.opacity(on ? 0.95 : 0.55), c.opacity(on ? 0.35 : 0.12)], startPoint: .top, endPoint: .bottom)))
+                        .overlay(shape.stroke(Color.white.opacity(on ? 0.4 : 0.08), lineWidth: on ? 1.5 : 1))
+                    }
+                    .buttonStyle(PressScale())
+                    .accessibilityLabel("Режим \(m.title)")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 12)
+        }
     }
 }
 
