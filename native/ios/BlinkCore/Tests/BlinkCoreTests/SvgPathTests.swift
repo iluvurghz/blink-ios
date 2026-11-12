@@ -60,7 +60,7 @@ final class SvgPathTests: XCTestCase {
     }
 
     func testUnsupportedCommandsAndGarbageStopTheParserKeepingWhatItHas() {
-        XCTAssertEqual(SvgPath.parse("M1,1L2,2A5,5 0 0 1 9,9L3,3"), [.move(x: 1, y: 1), .line(x: 2, y: 2)])
+        XCTAssertEqual(SvgPath.parse("M1,1L2,2Q5,5 9,9L3,3"), [.move(x: 1, y: 1), .line(x: 2, y: 2)])
         XCTAssertEqual(SvgPath.parse(""), [])
         XCTAssertEqual(SvgPath.parse("5,5"), [])
         XCTAssertEqual(SvgPath.parse("M1"), [])
