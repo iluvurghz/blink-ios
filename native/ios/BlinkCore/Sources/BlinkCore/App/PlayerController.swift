@@ -86,6 +86,8 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
     private var wantPlay = false
     private var ended = false
     private var loadTask: Task<Void, Never>?
+    /// Куда встать, когда трек загрузится (так комната подгоняет позицию при смене трека).
+    private var pendingSeekMs: Int64?
 
     public init(
         engine: PlaybackEngine,
@@ -117,8 +119,53 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
         if tracks.isEmpty { return }
         lock.lock()
         queue = tracks
+        pendingSeekMs = nil
         lock.unlock()
         startTrack(min(max(0, start), tracks.count - 1), autoplay: true)
+    }
+
+    /// Очередь целиком с места `positionMs`; `autoplay == false` оставляет на паузе (так нужно комнате).
+    public func play(_ tracks: [Track], at start: Int, positionMs: Int64, autoplay: Bool) {
+        if tracks.isEmpty { return }
+        lock.lock()
+        queue = tracks
+        pendingSeekMs = positionMs > 0 ? positionMs : nil
+        lock.unlock()
+        startTrack(min(max(0, start), tracks.count - 1), autoplay: autoplay)
+    }
+
+    /// Очередь и номер текущего трека (для комнаты).
+    public func queueSnapshot() -> (tracks: [Track], index: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (queue, max(0, index))
+    }
+
+    /// Тот же трек: встать на `ms`, затем играть или встать на паузу (команда комнаты).
+    public func setPlaying(_ playing: Bool, atMs ms: Int64) {
+        lock.lock()
+        let ph = phase
+        let hasTrack = index >= 0 && index < queue.count
+        if ph == .resolving { pendingSeekMs = ms > 0 ? ms : nil; wantPlay = playing }
+        if ph == .loaded { ended = false; wantPlay = playing }
+        lock.unlock()
+        if !hasTrack { return }
+        switch ph {
+        case .resolving:
+            state.update { $0.playing = playing }
+        case .loaded:
+            audio.seek(toMs: max(0, ms))
+            audio.setPlaying(playing)
+            state.update {
+                $0.playing = playing
+                $0.positionMs = max(0, ms)
+            }
+        case .idle, .failed:
+            lock.lock()
+            pendingSeekMs = ms > 0 ? ms : nil
+            lock.unlock()
+            startTrack(currentIndex(), autoplay: playing)
+        }
     }
 
     /// Дописать треки в конец очереди (Вспышка подкладывает новые, пока играет текущий).
@@ -333,7 +380,12 @@ public final class PlayerController: PlayerControl, PlaybackEngineDelegate, @unc
             if current { phase = .loaded }
             lock.unlock()
             if !current { return }
+            lock.lock()
+            let seekTo = pendingSeekMs
+            pendingSeekMs = nil
+            lock.unlock()
             audio.load(src, autoplay: want)
+            if let ms = seekTo { audio.seek(toMs: ms) }
         } catch is CancellationError {
             return
         } catch let failure as PlayFailure {

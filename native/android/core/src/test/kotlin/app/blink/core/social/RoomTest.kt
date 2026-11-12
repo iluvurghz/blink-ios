@@ -16,7 +16,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.runTest
@@ -179,7 +178,7 @@ private class FakeService : RoomService {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomSessionTest {
-    private fun TestScope.bg() = CoroutineScope(UnconfinedTestDispatcher(testScheduler) + SupervisorJob())
+    private fun TestScope.bg() = CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined + SupervisorJob())
     private val room = assertNotNull(RoomState.parse(ROOM))
 
     private fun session(scope: kotlinx.coroutines.CoroutineScope, service: FakeService, port: FakePort, said: MutableList<String>, now: () -> Long = { 101_500 }) =
@@ -196,6 +195,7 @@ class RoomSessionTest {
         assertTrue(port.calls.single().startsWith("play 2 0 "), port.calls.toString())
         assertTrue(port.calls.single().endsWith(" true"))
         assertEquals("abc123", s.room.value?.code)
+        s.leave()
     }
 
     @Test
@@ -214,6 +214,7 @@ class RoomSessionTest {
         s.onLocal(port.local()) // событие плеера от нашей же паузы
         advanceUntilIdle()
         assertTrue(service.posts.isEmpty(), service.posts.toString())
+        s.leave()
     }
 
     @Test
@@ -229,6 +230,7 @@ class RoomSessionTest {
         s.onLocal(port.local())
         advanceUntilIdle()
         assertEquals(listOf("post base=3 playing=false pos=30.0 track=null"), service.posts)
+        s.leave()
     }
 
     @Test
@@ -254,6 +256,7 @@ class RoomSessionTest {
         advanceUntilIdle()
         assertEquals(listOf("новое"), seen)
         job.cancel()
+        s.leave()
     }
 
     @Test
@@ -271,6 +274,7 @@ class RoomSessionTest {
         s.onLocal(port.local())
         advanceUntilIdle()
         assertEquals(listOf("Управляет хост комнаты"), said)
+        s.leave()
     }
 
     @Test
@@ -283,5 +287,6 @@ class RoomSessionTest {
         val third = Track("333", "Third", "X")
         s.update(room.copy(rev = 8, queue = room.queue + third))
         assertTrue(port.calls.contains("append 1"), port.calls.toString())
+        s.leave()
     }
 }

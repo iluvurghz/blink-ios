@@ -9,14 +9,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
@@ -107,7 +105,7 @@ class FriendsPlusApiTest {
         routes["/api/plus/me"] = { json("""{"active":true,"plus_until":"2027-01-01T00:00:00+00:00","supporter_since":"2026-01-01","donated":120,"keeper_tier":1}""") }
         val me = assertNotNull(api.me())
         assertTrue(me.active)
-        assertEquals(1798588800000, me.untilMs)
+        assertEquals(1798761600000, me.untilMs)
         assertEquals(1, me.keeperTier)
 
         routes["/api/plus/promo"] = { json("""{"kind":"discount","code":"HI","percent":20}""") }
@@ -120,7 +118,6 @@ class FriendsPlusApiTest {
         assertTrue(seen.last().body.readUtf8().contains("\"plan\":\"month\""))
         routes["/api/plus/donate"] = { json("""{"error":"Оплата пока не настроена"}""", 503) }
         assertEquals("Оплата пока не настроена", assertFailsWith<PlusException> { api.donate(100) }.message)
-        assertIs<PromoResult.Discount>(PromoResult.Discount("a", 1))
     }
 }
 
@@ -144,7 +141,7 @@ class FriendsModelTest {
     fun `activity is sent on change only, and never while hidden`() = runTest {
         val f = Fake()
         val said = ArrayList<String>()
-        val m = FriendsModel(f, CoroutineScope(UnconfinedTestDispatcher(testScheduler) + SupervisorJob()), { said.add(it) })
+        val m = FriendsModel(f, CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined + SupervisorJob()), { said.add(it) })
         val t = Track("1", "T", "A")
         m.report(true, t, null)
         m.report(true, t, null)
@@ -163,7 +160,7 @@ class FriendsModelTest {
     fun `hide rolls back when the server refuses and accept explains`() = runTest {
         val f = Fake().apply { okHide = false }
         val said = ArrayList<String>()
-        val m = FriendsModel(f, CoroutineScope(UnconfinedTestDispatcher(testScheduler) + SupervisorJob()), { said.add(it) })
+        val m = FriendsModel(f, CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined + SupervisorJob()), { said.add(it) })
         m.setHidden(true)
         assertFalse(m.state.value.hidden)
         assertEquals(listOf("Не получилось сохранить"), said)
