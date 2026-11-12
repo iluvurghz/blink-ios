@@ -8,7 +8,7 @@ public struct IconPart: Equatable, Sendable {
 }
 
 public enum LineIcon: String, CaseIterable, Sendable {
-    case play, pause, next, prev, shuffle, repeat, repeatOne, heart, heartFill, search, lyrics, queue, plus, close, back, down, more, min, max, bolt, check, download, home, library, chat, user, together, share, translate, thumbDown, trash, settings, edit, disc
+    case play, pause, next, prev, shuffle, `repeat`, repeatOne, heart, heartFill, search, lyrics, queue, plus, close, back, down, more, min, max, bolt, check, download, home, library, chat, user, together, share, translate, thumbDown, trash, settings, edit, disc
 
     public var parts: [IconPart] {
         switch self {
